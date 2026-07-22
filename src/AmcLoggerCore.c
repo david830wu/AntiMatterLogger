@@ -138,7 +138,14 @@ void amc_logger_log(struct amc_logger *logger, int level,
     } else {
         va_list ap;
         va_start(ap, payload_fmt);
+        /* `fmt` is payload_fmt advanced past the "\1" sentinel; the format
+         * attribute on amc_logger_log already type-checked the arguments at
+         * the call site. GCC traces the derived pointer and stays quiet;
+         * AppleClang does not, hence this scoped suppression. */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
         int r = vsnprintf(buf, cap, fmt, ap);
+#pragma GCC diagnostic pop
         va_end(ap);
         if (r < 0) {
             payload = "{}";
