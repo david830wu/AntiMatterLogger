@@ -1,0 +1,21 @@
+%YAML 1.2
+---
+# AmcLogger reference configuration — every key shown with its default.
+# All keys are optional; unknown keys are init errors (fail fast).
+
+default_level: INFO            # DEBUG | INFO | WARN | ERROR | CRITICAL | OFF
+async: true                    # false = synchronous mode (no queue, no worker)
+queue_size: 8192               # async: preallocated message slots (16..1048576)
+queue_full_policy: block       # block | overrun_oldest | discard_new
+max_message_size: 2048         # bytes per rendered line incl. header (256..8192)
+flush_every_ms: 1000           # async: periodic flush; 0 disables
+utc_offset_hours: 8            # timestamps and $TODAY (-12..14)
+critical_sync: false           # async: CRITICAL bypasses the queue
+
+sinks:                         # omitted entirely -> stdout only
+  stdout: {}
+  basic_file: "./log/$TODAY/MyApp.$PID.log"
+
+loggers:                       # module name -> level override
+  main: INFO
+  LongTermExtractor: DEBUG
