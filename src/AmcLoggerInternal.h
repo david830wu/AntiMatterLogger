@@ -19,6 +19,19 @@
 #define AMC_QUEUE_SIZE_MAX    1048576
 #define AMC_FLUSH_MS_MAX      3600000
 #define AMC_WORKER_BATCH      64
+#define AMC_WORKER_SPIN_ITERS 512    /* ~5 us of polling before parking: long
+                                      * enough that a saturated stream never
+                                      * parks the worker, short enough that
+                                      * sparse traffic (~10k msg/s) costs only
+                                      * ~5% of one core in idle spinning      */
+
+#if defined(__x86_64__)
+#define AMC_CPU_RELAX() __builtin_ia32_pause()
+#elif defined(__aarch64__)
+#define AMC_CPU_RELAX() __asm__ volatile("yield")
+#else
+#define AMC_CPU_RELAX() ((void)0)
+#endif
 #define AMC_FILE_IOBUF_SIZE   65536
 #define AMC_CONFIG_SIZE_MAX   (1024 * 1024)
 #define AMC_PATH_MAX          4096
@@ -56,13 +69,19 @@ struct amc_queue {
     pthread_cond_t  not_full;
     pthread_cond_t  flush_done;
     char           *slots;            /* capacity * slot_stride                      */
-    char           *batch;            /* AMC_WORKER_BATCH * slot_stride (worker only)*/
+    char           *batch;            /* copy-out buffer; overrun_oldest only        */
     uint32_t        capacity;
     uint32_t        slot_stride;
     uint32_t        head, count;      /* ring state, under mtx                       */
+    uint32_t        inflight;         /* slots checked out zero-copy by the worker;  *
+                                       * producers treat them as occupied (under mtx)*/
     uint64_t        seq_enq;          /* total accepted, under mtx                   */
+    _Atomic uint64_t enq_hint;        /* mirrors seq_enq; lets the worker spin-poll  *
+                                       * for new messages without touching the mutex */
     uint64_t        seq_flushed;      /* written + fflushed watermark, under mtx     */
     uint64_t        flush_req;        /* highest requested flush target, under mtx   */
+    int             worker_waiting;   /* worker parked on not_empty (under mtx);
+                                       * producers skip the wake syscall otherwise   */
     int             stop;
     int             inited;
 };

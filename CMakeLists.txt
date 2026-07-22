@@ -11,6 +11,9 @@ else()
 endif()
 
 option(AMC_BUILD_TESTS "Build the AmcLogger unit tests" ${AMC_TOP_LEVEL})
+option(AMC_BUILD_BENCH "Build the benchmark harness" OFF)
+option(AMC_BENCH_SPDLOG "Build the optional spdlog comparison benchmark (FetchContent)" OFF)
+option(AMC_BUILD_EXAMPLES "Build the example program" OFF)
 
 set(AMC_SOURCES
     src/AmcLoggerCore.c
@@ -77,4 +80,35 @@ if(AMC_BUILD_TESTS)
     # chapter 08 demonstrates compile-time stripping: same sources, extra flag
     target_compile_definitions(Test08_CompileTimeStrip
         PRIVATE AMC_LOGGER_ACTIVE_LEVEL=AMC_LOGGER_LEVEL_WARN)
+endif()
+
+# ---- example program (docs/Design.md §9); run from the repository root ----
+if(AMC_BUILD_EXAMPLES)
+    add_executable(amc_example examples/main.c examples/LongTermExtractor.c)
+    target_link_libraries(amc_example PRIVATE amc_logger)
+    set_target_properties(amc_example PROPERTIES C_STANDARD 11 C_EXTENSIONS ON)
+    target_compile_options(amc_example PRIVATE -Wall -Wextra)
+endif()
+
+# ---- benchmark harness (docs/Architecture.md §13); always built -O2 ----
+if(AMC_BUILD_BENCH)
+    foreach(b BenchDisabled BenchEnqueue BenchThroughput)
+        add_executable(${b} bench/${b}.c)
+        target_link_libraries(${b} PRIVATE amc_logger)
+        set_target_properties(${b} PROPERTIES C_STANDARD 11 C_EXTENSIONS ON)
+        target_compile_options(${b} PRIVATE -Wall -Wextra -O2)
+    endforeach()
+
+    if(AMC_BENCH_SPDLOG)
+        # C++ is confined to this one benchmark target; the library stays pure C
+        enable_language(CXX)
+        include(FetchContent)
+        FetchContent_Declare(spdlog
+            URL https://github.com/gabime/spdlog/archive/refs/tags/v1.14.1.tar.gz)
+        FetchContent_MakeAvailable(spdlog)
+        add_executable(BenchSpdlog bench/BenchSpdlog.cpp)
+        target_link_libraries(BenchSpdlog PRIVATE spdlog::spdlog)
+        set_target_properties(BenchSpdlog PROPERTIES CXX_STANDARD 17)
+        target_compile_options(BenchSpdlog PRIVATE -O2)
+    endif()
 endif()

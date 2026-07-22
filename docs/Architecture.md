@@ -554,8 +554,10 @@ read `tests/Test01…Test09` in order and you have read the user manual:
 | 09 MultiThreaded | concurrent producers: lossless under `block`, intact lines, per-thread program order |
 
 The full suite passes under ThreadSanitizer and ASan+UBSan (CI runs those legs).
-Bench (M5, pending): `BenchDisabled` (target ≤ ~2 ns), `BenchEnqueue` (p50/p99
-sample-and-sort), `BenchThroughput` (drain ≥ 1 M lines/s), `BenchSpdlog` (optional).
+Bench (`-DAMC_BUILD_BENCH=ON`, always compiled -O2): `BenchDisabled`, `BenchEnqueue`
+(burst percentiles + a paced 10k msg/s phase measuring the worker-wake cost),
+`BenchThroughput`, and `BenchSpdlog` (`-DAMC_BENCH_SPDLOG=ON`, FetchContent, C++
+confined to that target). Measured results and the tail investigation: §14.13.
 
 ## 14. Refinements relative to Design.md — please eyeball these
 
@@ -601,6 +603,38 @@ sample-and-sort), `BenchThroughput` (drain ≥ 1 M lines/s), `BenchSpdlog` (opti
     survive resets — call-site caches must stay valid — so `amc_logger_init` first
     sweeps every existing logger to the new `default_level` before applying overrides.
     The sweep is harmless in production, where the registry is empty at first init.
+13. **The saturated-tail investigation** (benchmark-driven; supersedes the §14.2
+    rationale). The numeric targets exposed a chain of real effects; the final queue
+    design is their sum:
+    - Copy-out-under-lock checkout held the queue mutex across a 64-message copy;
+      producer collisions became futex sleeps. Replaced by **zero-copy checkout with
+      in-flight accounting** for `block`/`discard_new`. TSan then proved
+      `overrun_oldest` incompatible with zero-copy — with a full ring, the
+      post-overwrite tail insert lands exactly on the first in-flight slot — so that
+      policy alone keeps copy-out (policy-split checkout).
+    - `PTHREAD_MUTEX_ADAPTIVE_NP`: measured, rejected — producer-side spinning starves
+      the worker (drain halves) without improving the tail.
+    - Ring pre-faulting at init: kept as hygiene (first-touch page faults off the hot
+      path), though it was not the measured tail.
+    - The dominant mechanism (found via strace: 68k futex syscalls per ~150k
+      messages): a worker that drains as fast as production keeps the queue near
+      EMPTY, so it parked on the condvar between batches and nearly every enqueue paid
+      a futex wake + IPI. spdlog's clean saturated tail is the same effect mirrored —
+      its several-times-slower worker never parks. Fixes (standard condvar practice):
+      producers signal only when `worker_waiting` is set, and only after unlocking;
+      the worker acks the previous batch inside the next checkout's critical section
+      (one lock per batch, not two); the worker spin-polls an atomic enqueue hint for
+      ~5 µs — exiting early once ~8 messages accumulate — before parking. Futex count
+      fell to ~13k, almost all legitimate sparse-traffic wakes.
+    - Final numbers vs spdlog v1.14.1 async, same dev VM, gcc-13 -O2, two pinned
+      cores: p50 **208 vs 383 ns**, drain **1.7–3.6M vs 0.5–0.9M lines/s**, saturated
+      p99 **5.3 vs 1.6 µs** — same order of magnitude, better median and throughput
+      (the Q19 acceptance). The saturated p99 misses the aspirational 1 µs; the
+      residual is mutex cacheline traffic plus VM scheduler noise, intrinsic to a
+      mutex+condvar queue at saturation. At the production envelope (~10k msg/s) the
+      regime differs: sparse calls pay one worker wake (~3 µs, the paced bench
+      phase), micro-burst calls pay ~200 ns, and the worker's idle spin costs ~5% of
+      one core.
 
 ## 15. Implementation order (each milestone ends green)
 

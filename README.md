@@ -1,5 +1,7 @@
 # AntiMatterLogger
 
+[![CI](https://github.com/david830wu/AntiMatterLogger/actions/workflows/ci.yml/badge.svg)](https://github.com/david830wu/AntiMatterLogger/actions/workflows/ci.yml)
+
 A fast, small, pure-C (C11) logging library for trading systems, built for the
 AntiMatterCommon ecosystem (`amc_` / `AMC_LOGGER_` prefix). Inspired by spdlog's
 architecture, stripped to a fixed format and a deliberately tiny core (~1,600 LOC,
@@ -113,14 +115,45 @@ order — each demonstrates one slice of practical usage, including the mistakes
 The suite passes under ThreadSanitizer and ASan+UBSan. Tests use the vendored
 [Unity](https://github.com/ThrowTheSwitch/Unity) framework (`third_party/unity`, MIT).
 
+## Performance
+
+Measured with the in-repo harness (`-DAMC_BUILD_BENCH=ON`, always compiled `-O2`;
+run on a quiet machine, e.g. `taskset -c 2,3 ./build/BenchEnqueue`). Numbers below
+are from a development VM (x86-64, gcc-13, two pinned cores) — indicative, not
+authoritative; expect better on production hardware:
+
+| Metric | Target | AmcLogger | spdlog v1.14.1 async, same box |
+| ------ | ------ | --------- | ------------------------------ |
+| Runtime-disabled call | ≤ ~2 ns | **0.8–0.9 ns** | — |
+| Enabled async call, p50 (burst) | ≤ 200 ns | **187–208 ns** | 383 ns |
+| Enabled async call, p99 (saturated) | ≤ 1 µs | 5.3 µs¹ | 1.6 µs |
+| Sparse call incl. waking the worker | — | ~3 µs | — |
+| End-to-end drain to file | ≥ 1 M lines/s | **1.7–3.6 M lines/s** | 0.5–0.9 M lines/s |
+
+¹ Saturated-tail mechanics, the tuning that got here (zero-copy checkout,
+wake-gating, spin-before-park), and why a mutex+condvar queue at saturation cannot
+reach 1 µs p99 are documented in [`docs/Architecture.md`](docs/Architecture.md)
+§14.13. At the intended production envelope (~10k msgs/s) the saturated regime does
+not apply.
+
+Compare against spdlog yourself with `-DAMC_BENCH_SPDLOG=ON` (FetchContent; C++ is
+confined to that one benchmark target).
+
+## Example program
+
+`examples/` builds the Design.md §9 walkthrough:
+
+```bash
+cmake -S . -B build -DAMC_BUILD_EXAMPLES=ON && cmake --build build -j
+./build/amc_example        # run from the repo root; uses config/logger.yaml
+```
+
 ## Design documents
 
 The library was designed before it was built, and the documents are kept current:
 [`docs/Design.md`](docs/Design.md) (agreed requirements),
 [`docs/Architecture.md`](docs/Architecture.md) (implementation contract and every
-refinement made along the way). Design targets: ≤ ~2 ns disabled call, ≤ ~200 ns
-median enqueue, ≥ 1 M lines/s drain — the benchmark harness verifying them is the
-next milestone (alongside CI and examples); numbers will be published when measured.
+refinement made along the way, including the benchmark-driven queue tuning).
 
 ## License
 

@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  build-test:
+    name: ${{ matrix.os }} / ${{ matrix.config }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+        config: [release, asan, tsan]
+        include:
+          - config: release
+            cmake_flags: >-
+              -DCMAKE_BUILD_TYPE=Release
+              -DAMC_BUILD_BENCH=ON
+              -DAMC_BUILD_EXAMPLES=ON
+          - config: asan
+            cmake_flags: >-
+              -DCMAKE_BUILD_TYPE=Debug
+              -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all -g"
+          - config: tsan
+            cmake_flags: >-
+              -DCMAKE_BUILD_TYPE=Debug
+              -DCMAKE_C_FLAGS="-fsanitize=thread -g -O1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install gcc-13 (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y gcc-13
+
+      - name: Configure
+        env:
+          CC: ${{ runner.os == 'Linux' && 'gcc-13' || 'clang' }}
+        run: cmake -S . -B build ${{ matrix.cmake_flags }}
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      # benchmarks are build-verified in every release leg; a quick timed run
+      # on the shared runner is informational only (numbers are not asserted)
+      - name: Run example and benchmarks (informational)
+        if: matrix.config == 'release'
+        run: |
+          ./build/amc_example
+          ./build/BenchEnqueue
+          ./build/BenchThroughput

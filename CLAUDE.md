@@ -22,6 +22,20 @@ Each ctest chapter runs in its own working directory (`build/run/<chapter>/`) �
 there for a failing test's config/log files. The library target builds with `-Werror`;
 tests build without it.
 
+Benchmarks and the example (both OFF by default):
+
+```bash
+cmake -S . -B build-rel -DCMAKE_BUILD_TYPE=Release -DAMC_BUILD_BENCH=ON -DAMC_BUILD_EXAMPLES=ON
+taskset -c 2,3 ./build-rel/BenchEnqueue     # pin TWO cores: worker needs its own
+./build-rel/amc_example                     # run from repo root (config path)
+# spdlog comparison: add -DAMC_BENCH_SPDLOG=ON (FetchContent, needs network)
+```
+
+Before accepting any queue/worker change: all three suites, the TSan stress loop
+(`ctest -R "Test07|Test09"` ×25), and BenchEnqueue/BenchThroughput — the queue's
+tuning history and why each piece exists is Architecture §14.13; don't re-tune
+without reading it.
+
 ## Where truth lives
 
 The project is developed in agreed phases; documents are canonical and kept current:
@@ -104,6 +118,8 @@ asserting, or Unity's failure output lands in the capture file. `TestSupport.h`'
 
 ## Current state / roadmap
 
-v1 library and test suite are green (incl. TSan/ASan/UBSan). Pending per
-`docs/Architecture.md` §15 milestone M5: `bench/` harness against the §10 numeric
-targets, GitHub Actions CI (Linux gcc-13 + macOS legs), `examples/` build target.
+v1 complete: library + 9-chapter test suite green (incl. TSan/ASan/UBSan), `bench/`
+harness with measured numbers (README table; investigation in Architecture §14.13),
+`examples/` target, GitHub Actions CI matrix ({ubuntu gcc-13, macos-14} ×
+{Release, ASan/UBSan, TSan}) in `.github/workflows/ci.yml`. Remaining ideas live in
+Design.md §13 future-work parking lot.
