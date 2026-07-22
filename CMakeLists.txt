@@ -63,7 +63,8 @@ if(AMC_BUILD_TESTS)
         Test06_Lifecycle
         Test07_AsyncAndReliability
         Test08_CompileTimeStrip
-        Test09_MultiThreaded)
+        Test09_MultiThreaded
+        Test10_JsonPayload)
 
     foreach(chapter ${AMC_TEST_CHAPTERS})
         add_executable(${chapter} tests/${chapter}.c tests/TestHelperModule.c)

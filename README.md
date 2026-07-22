@@ -20,6 +20,11 @@ zero dependencies beyond libc and pthreads).
   stats and announced in a `[MessageLoss]` summary line
 - **Auto-flush after ERROR/CRITICAL**, periodic flush, blocking `amc_logger_flush()`,
   and opt-in `critical_sync` (CRITICAL is on disk before the call returns)
+- **Compile-time JSON payload composer** — `AMC_JSON((key, fmt, value), …)` and
+  `AMC_KV_*` typed helpers generate the payload structure for you (quoted keys,
+  colons, commas, braces) and expand to the identical single format literal of the
+  raw form: zero runtime cost, printf type checking preserved, malformed JSON
+  structure becomes a compile error
 - **Fail-fast YAML configuration**: a strict subset parser; any mistake — typo'd key,
   bad level, tab, out-of-subset YAML — fails init with a `file:line:` diagnostic
 - **Compile-time level stripping** (`AMC_LOGGER_ACTIVE_LEVEL`) and cheap runtime
@@ -37,8 +42,9 @@ int main(void) {
 
     AMC_LOGGER_INFO("PrintPi", "{\"pi\":%.7f}", 3.1415926);
     AMC_LOGGER_WARN("JustAnEvent");                          /* payload optional */
-    AMC_LOGGER_ERROR_ID("VolumeError", 100,                  /* with trader id   */
-                        "{\"threshold\":%d,\"volume\":%d}", 1000, 1200);
+    AMC_LOGGER_ERROR_ID("VolumeError", 100,                  /* composed payload */
+                        AMC_JSON(AMC_KV_INT("threshold", 1000),
+                                 AMC_KV_INT("volume", 1200)));
 
     amc_logger_shutdown();                /* drains the queue: nothing is lost */
     return 0;
@@ -55,6 +61,12 @@ Rules of the road: call `amc_logger_init()` once, before spawning threads (check
 return value — a bad config fails fast); log from any thread; EVENT and the payload
 format string must be string literals (the compiler enforces the latter); payload
 arguments are not evaluated when a call is filtered out.
+
+Payloads can be written as a raw printf format string, or — recommended — composed
+with `AMC_JSON`, which builds the same literal at compile time from
+`(key, fmt, value…)` tuples and `AMC_KV_INT/I64/U64/F64/STR/BOOL` helpers: keys are
+quoted automatically, structure can't be malformed, and a type mismatch is a compile
+error. Chapter 10 of the test suite is the full guide.
 
 ## Configuration
 
@@ -111,6 +123,7 @@ order — each demonstrates one slice of practical usage, including the mistakes
 | 07 AsyncAndReliability | flush visibility, overflow policies, truncation, `critical_sync` |
 | 08 CompileTimeStrip | `AMC_LOGGER_ACTIVE_LEVEL` removes calls from the binary |
 | 09 MultiThreaded | lossless concurrent producers, per-thread ordering |
+| 10 JsonPayload | composing payloads with `AMC_JSON` and the `AMC_KV_*` helpers |
 
 The suite passes under ThreadSanitizer and ASan+UBSan. Tests use the vendored
 [Unity](https://github.com/ThrowTheSwitch/Unity) framework (`third_party/unity`, MIT).

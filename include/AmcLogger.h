@@ -151,4 +151,97 @@ void amc_logger_log(struct amc_logger *logger, int level,
 #define AMC_LOGGER_CRITICAL_ID(event_, trader_id_, ...) ((void)0)
 #endif
 
+/* ---- AMC_JSON: compile-time JSON payload composer -----------------------
+ *
+ * Builds the payload from (key, printf_fmt, value...) tuples instead of a
+ * hand-written format string. It expands to EXACTLY the raw form's single
+ * string literal plus argument list, so it costs nothing at runtime and the
+ * compiler still type-checks every value against its format:
+ *
+ *     AMC_LOGGER_ERROR("VolumeError", AMC_JSON(("threshold", "%d", 1000),
+ *                                              ("volume",    "%d", volume)));
+ *     -> {"threshold":1000,"volume":1200}
+ *
+ * Keys are quoted automatically; braces, colons and commas are generated —
+ * malformed JSON structure becomes a compile error instead of a bad log line.
+ * Typed helpers cover the common cases (string values get their quotes for
+ * free); a raw tuple gives full printf control and may hold several values,
+ * which also covers nested objects and constant fragments:
+ *
+ *     AMC_JSON(AMC_KV_INT("volume", v), AMC_KV_STR("tag", tag),
+ *              ("px", "%.2f", px), ("order", "{\"vol\":%d}", v), ("armed", "true"))
+ *
+ * Limits and rules:
+ *  - 1..16 pairs; exceeding 16 fails to compile mentioning TOO_MANY_KEYS.
+ *  - For an empty payload omit the payload argument entirely (renders {}).
+ *  - Keys and formats must be string literals (enforced by concatenation).
+ *  - Values are NOT escaped at runtime (Design.md §3): a %s value that
+ *    contains '"' or '\' still breaks the JSON. Escaping helper: v1.1.
+ */
+#define AMC_JSON(...)                                                          \
+    "{" AMC_JSON_CAT_(AMC_JSON_FMT_, AMC_JSON_NARG_(__VA_ARGS__))(__VA_ARGS__) \
+    "}" AMC_JSON_CAT_(AMC_JSON_ARG_, AMC_JSON_NARG_(__VA_ARGS__))(__VA_ARGS__)
+
+/* typed helpers (each expands to a plain tuple) */
+#define AMC_KV_INT(key_, val_)  (key_, "%d",    (int)(val_))
+#define AMC_KV_I64(key_, val_)  (key_, "%lld",  (long long)(val_))
+#define AMC_KV_U64(key_, val_)  (key_, "%llu",  (unsigned long long)(val_))
+#define AMC_KV_F64(key_, val_)  (key_, "%.17g", (double)(val_))   /* round-trip;
+                                          use a raw tuple for fixed decimals */
+#define AMC_KV_STR(key_, val_)  (key_, "\"%s\"", (val_))
+#define AMC_KV_BOOL(key_, val_) (key_, "%s", (val_) ? "true" : "false")
+
+/* -- internals ----------------------------------------------------------- */
+#define AMC_JSON_CAT2_(a, b) a##b
+#define AMC_JSON_CAT_(a, b) AMC_JSON_CAT2_(a, b)
+#define AMC_JSON_NARGN_(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12,     \
+                        _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23, \
+                        _24, _25, _26, _27, _28, _29, _30, _31, _32, N, ...) N
+#define AMC_JSON_NARG_(...)                                                    \
+    AMC_JSON_NARGN_(__VA_ARGS__,                                               \
+        TOO_MANY_KEYS, TOO_MANY_KEYS, TOO_MANY_KEYS, TOO_MANY_KEYS,            \
+        TOO_MANY_KEYS, TOO_MANY_KEYS, TOO_MANY_KEYS, TOO_MANY_KEYS,            \
+        TOO_MANY_KEYS, TOO_MANY_KEYS, TOO_MANY_KEYS, TOO_MANY_KEYS,            \
+        TOO_MANY_KEYS, TOO_MANY_KEYS, TOO_MANY_KEYS, TOO_MANY_KEYS,            \
+        16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
+
+#define AMC_JSON_KV_FMT2_(key_, fmt_, ...) "\"" key_ "\":" fmt_
+#define AMC_JSON_KV_FMT_(t) AMC_JSON_KV_FMT2_ t
+#define AMC_JSON_KV_ARG2_(key_, fmt_, ...) , ##__VA_ARGS__
+#define AMC_JSON_KV_ARG_(t) AMC_JSON_KV_ARG2_ t
+
+#define AMC_JSON_FMT_1(a)       AMC_JSON_KV_FMT_(a)
+#define AMC_JSON_FMT_2(a, ...)  AMC_JSON_FMT_1(a) "," AMC_JSON_FMT_1(__VA_ARGS__)
+#define AMC_JSON_FMT_3(a, ...)  AMC_JSON_FMT_1(a) "," AMC_JSON_FMT_2(__VA_ARGS__)
+#define AMC_JSON_FMT_4(a, ...)  AMC_JSON_FMT_1(a) "," AMC_JSON_FMT_3(__VA_ARGS__)
+#define AMC_JSON_FMT_5(a, ...)  AMC_JSON_FMT_1(a) "," AMC_JSON_FMT_4(__VA_ARGS__)
+#define AMC_JSON_FMT_6(a, ...)  AMC_JSON_FMT_1(a) "," AMC_JSON_FMT_5(__VA_ARGS__)
+#define AMC_JSON_FMT_7(a, ...)  AMC_JSON_FMT_1(a) "," AMC_JSON_FMT_6(__VA_ARGS__)
+#define AMC_JSON_FMT_8(a, ...)  AMC_JSON_FMT_1(a) "," AMC_JSON_FMT_7(__VA_ARGS__)
+#define AMC_JSON_FMT_9(a, ...)  AMC_JSON_FMT_1(a) "," AMC_JSON_FMT_8(__VA_ARGS__)
+#define AMC_JSON_FMT_10(a, ...) AMC_JSON_FMT_1(a) "," AMC_JSON_FMT_9(__VA_ARGS__)
+#define AMC_JSON_FMT_11(a, ...) AMC_JSON_FMT_1(a) "," AMC_JSON_FMT_10(__VA_ARGS__)
+#define AMC_JSON_FMT_12(a, ...) AMC_JSON_FMT_1(a) "," AMC_JSON_FMT_11(__VA_ARGS__)
+#define AMC_JSON_FMT_13(a, ...) AMC_JSON_FMT_1(a) "," AMC_JSON_FMT_12(__VA_ARGS__)
+#define AMC_JSON_FMT_14(a, ...) AMC_JSON_FMT_1(a) "," AMC_JSON_FMT_13(__VA_ARGS__)
+#define AMC_JSON_FMT_15(a, ...) AMC_JSON_FMT_1(a) "," AMC_JSON_FMT_14(__VA_ARGS__)
+#define AMC_JSON_FMT_16(a, ...) AMC_JSON_FMT_1(a) "," AMC_JSON_FMT_15(__VA_ARGS__)
+
+#define AMC_JSON_ARG_1(a)       AMC_JSON_KV_ARG_(a)
+#define AMC_JSON_ARG_2(a, ...)  AMC_JSON_ARG_1(a) AMC_JSON_ARG_1(__VA_ARGS__)
+#define AMC_JSON_ARG_3(a, ...)  AMC_JSON_ARG_1(a) AMC_JSON_ARG_2(__VA_ARGS__)
+#define AMC_JSON_ARG_4(a, ...)  AMC_JSON_ARG_1(a) AMC_JSON_ARG_3(__VA_ARGS__)
+#define AMC_JSON_ARG_5(a, ...)  AMC_JSON_ARG_1(a) AMC_JSON_ARG_4(__VA_ARGS__)
+#define AMC_JSON_ARG_6(a, ...)  AMC_JSON_ARG_1(a) AMC_JSON_ARG_5(__VA_ARGS__)
+#define AMC_JSON_ARG_7(a, ...)  AMC_JSON_ARG_1(a) AMC_JSON_ARG_6(__VA_ARGS__)
+#define AMC_JSON_ARG_8(a, ...)  AMC_JSON_ARG_1(a) AMC_JSON_ARG_7(__VA_ARGS__)
+#define AMC_JSON_ARG_9(a, ...)  AMC_JSON_ARG_1(a) AMC_JSON_ARG_8(__VA_ARGS__)
+#define AMC_JSON_ARG_10(a, ...) AMC_JSON_ARG_1(a) AMC_JSON_ARG_9(__VA_ARGS__)
+#define AMC_JSON_ARG_11(a, ...) AMC_JSON_ARG_1(a) AMC_JSON_ARG_10(__VA_ARGS__)
+#define AMC_JSON_ARG_12(a, ...) AMC_JSON_ARG_1(a) AMC_JSON_ARG_11(__VA_ARGS__)
+#define AMC_JSON_ARG_13(a, ...) AMC_JSON_ARG_1(a) AMC_JSON_ARG_12(__VA_ARGS__)
+#define AMC_JSON_ARG_14(a, ...) AMC_JSON_ARG_1(a) AMC_JSON_ARG_13(__VA_ARGS__)
+#define AMC_JSON_ARG_15(a, ...) AMC_JSON_ARG_1(a) AMC_JSON_ARG_14(__VA_ARGS__)
+#define AMC_JSON_ARG_16(a, ...) AMC_JSON_ARG_1(a) AMC_JSON_ARG_15(__VA_ARGS__)
+
 #endif /* AMC_LOGGER_H_ */

@@ -635,6 +635,18 @@ confined to that target). Measured results and the tail investigation: §14.13.
       regime differs: sparse calls pay one worker wake (~3 µs, the paced bench
       phase), micro-burst calls pay ~200 ns, and the worker's idle spin costs ~5% of
       one core.
+14. **`AMC_JSON` payload composer** (agreed amendment, Design §3 rule 6). A FOR-EACH
+    preprocessor block in the public header turns `(key, fmt, value…)` tuples into the
+    raw form's exact single format literal via string concatenation — braces, quoted
+    keys, colons and commas are generated, so malformed payload structure becomes a
+    compile error, while the expansion is byte-identical to the hand-written form
+    (proved by a Test10 equality test): zero runtime cost, printf checking and the
+    literal-only contract preserved. Value expansion embeds a leading `, ##__VA_ARGS__`
+    so tuples may carry zero value arguments (constant fragments like
+    `("armed", "true")`). Capacity 1–16 pairs; 17+ dispatches to the deliberately
+    undefined `AMC_JSON_FMT_TOO_MANY_KEYS`, making the compile error self-explanatory.
+    Typed sugar `AMC_KV_INT/I64/U64/F64/STR/BOOL` expands to plain tuples. No `src/`
+    changes; runtime escaping of `%s` values stays deferred (Design §13).
 
 ## 15. Implementation order (each milestone ends green)
 

@@ -4,6 +4,10 @@
 `Answer1.md`, and the follow-up confirmations FQ1–FQ3 (recorded in §12). This document
 supersedes `InitDesign.md`; where they differ, this document wins.
 
+**Amendment (2026-07-22, agreed)**: the `AMC_JSON` compile-time payload composer and
+`AMC_KV_*` typed helpers were added to §3 rule 6 and §8; runtime string escaping is
+explicitly deferred to v1.1 (§13).
+
 **Next step**: architecture design (module/file layout, public header, core data structures).
 
 Decision references like (D3) or (Q14) point to the numbered items in `Answer1.md`;
@@ -78,6 +82,12 @@ Rules:
    parsing and are not escaped.
 5. The payload format string must be a literal (compile-time checked via the printf format
    attribute).
+6. The recommended way to build payloads is the `AMC_JSON` composer: `(key, fmt, value…)`
+   tuples (or `AMC_KV_INT/I64/U64/F64/STR/BOOL` helpers) expand at compile time to the
+   identical single format literal of the raw form — keys auto-quoted, structure generated,
+   zero runtime cost, printf checking preserved. 1–16 pairs; raw tuples cover custom
+   precision, nested objects, and constant fragments. The raw string form remains valid.
+   Values are still not escaped at runtime (see §13 for the deferred v1.1 helper).
 
 ## 4. Execution model
 
@@ -237,6 +247,11 @@ AMC_LOGGER_CRITICAL(event, ...)       AMC_LOGGER_CRITICAL_ID(event, trader_id, .
 /* Compile-time floor: calls below it compile to ((void)0). Default: DEBUG (keep all). */
 #define AMC_LOGGER_ACTIVE_LEVEL AMC_LOGGER_LEVEL_DEBUG
 /* Level constants: DEBUG=0, INFO=1, WARN=2, ERROR=3, CRITICAL=4, OFF=5 */
+
+/* Payload composer (§3 rule 6): expands to the raw form's literal at compile time */
+AMC_JSON((key, fmt, value...) , ...)          /* 1..16 pairs                        */
+AMC_KV_INT(key, v)   AMC_KV_I64(key, v)   AMC_KV_U64(key, v)
+AMC_KV_F64(key, v)   AMC_KV_STR(key, v)   AMC_KV_BOOL(key, v)
 ```
 
 `amc_logger_init(NULL)` behaves exactly like loading an empty config file: every key takes
@@ -331,4 +346,5 @@ colors; expected-output examples use quoted-key JSON payloads.
 Daily rollover / size rotation; `amc_logger_set_level()` and SIGHUP config reload;
 per-logger sink selection and per-sink levels; Windows; console colors; TSC-based
 timestamps; NanoLog-style binary deferred logging if a sub-100 ns producer path is ever
-required.
+required; runtime JSON string escaping for `%s` payload values (v1.1 candidate:
+`AMC_KV_STR_ESC`, escaping into a stack buffer at some runtime cost).

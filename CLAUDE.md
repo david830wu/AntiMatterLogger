@@ -85,6 +85,9 @@ process, ever.
   makes empty payloads work, and avoids `-Wformat-zero-length` in user builds.
   `amc_logger_log` skips the first byte. EVENT strings are stored by pointer — the
   literal-only contract is documented API.
+- **`AMC_JSON` must stay a pure compile-time literal composer** (Architecture §14.14):
+  it expands to exactly the raw form's format literal + args — Test10 asserts byte
+  equality. Never turn it into anything with runtime cost.
 - **Fail fast** (philosophy 00): config mistakes are init failures with a
   `file:line: message` stderr diagnostic — never a silent default. Every new
   diagnostic needs a chapter-04 test asserting its exact text. Runtime loss (drops,
@@ -96,7 +99,7 @@ process, ever.
 
 ## Tests are the user manual
 
-`tests/Test01…Test09` are documentation chapters written from the user's point of view,
+`tests/Test01…Test10` are documentation chapters written from the user's point of view,
 meant to be read in order — narrative header comment per file, one behavior per test.
 New user-visible behavior belongs in the fitting chapter, written in the same style.
 Test discipline: always release captured stdout/stderr (`release_stdout()`) *before*
