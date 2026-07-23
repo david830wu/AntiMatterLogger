@@ -53,7 +53,8 @@ struct amc_logger_stats {
     uint64_t dropped_new;      /* discard_new rejections + drops during shutdown      */
     uint64_t overwritten_old;  /* overrun_oldest overwrites                           */
     uint64_t producer_blocks;  /* waits caused by a full queue under `block`          */
-    uint64_t truncated;        /* lines cut at max_message_size                       */
+    uint64_t truncated;        /* lines cut at max_message_size, and escaped
+                                  string values cut at their buffer limit             */
     uint64_t write_errors;     /* failed sink writes/flushes                          */
     uint64_t queue_high_water; /* maximum queue occupancy observed                    */
 };
@@ -77,6 +78,16 @@ void amc_logger_log(struct amc_logger *logger, int level,
                     int has_id, int trader_id,
                     const char *payload_fmt, ...)
                     __attribute__((format(printf, 7, 8)));
+
+/* JSON-escapes `s` into one of 16 per-thread buffers and returns it — the
+ * runtime piece behind AMC_KV_STR_ESC, also usable in raw tuples:
+ * ("msg", "\"%s\"", amc_logger_json_escape(m)). The pointer is valid only as
+ * a payload argument of the log call it appears in (at most 16 escaped
+ * values per call). Escapes '"', '\' and control bytes (\n \r \t \b \f,
+ * else \u00XX) — embedded newlines cannot break the one-line format; UTF-8
+ * passes through; NULL becomes the empty string. Values longer than ~1 KB
+ * after escaping end with "..." and count into stats.truncated. */
+const char *amc_logger_json_escape(const char *s);
 
 /* The `"\1" __VA_ARGS__` concatenation makes a non-literal format string a
  * compile error and lets a missing payload become the 1-byte sentinel string
@@ -176,8 +187,9 @@ void amc_logger_log(struct amc_logger *logger, int level,
  *  - 1..16 pairs; exceeding 16 fails to compile mentioning TOO_MANY_KEYS.
  *  - For an empty payload omit the payload argument entirely (renders {}).
  *  - Keys and formats must be string literals (enforced by concatenation).
- *  - Values are NOT escaped at runtime (Design.md §3): a %s value that
- *    contains '"' or '\' still breaks the JSON. Escaping helper: v1.1.
+ *  - Plain %s values are NOT escaped (Design.md §3): AMC_KV_STR trusts its
+ *    input. For arbitrary data use AMC_KV_STR_ESC, which JSON-escapes the
+ *    value at runtime.
  */
 #define AMC_JSON(...)                                                          \
     "{" AMC_JSON_CAT_(AMC_JSON_FMT_, AMC_JSON_NARG_(__VA_ARGS__))(__VA_ARGS__) \
@@ -191,6 +203,10 @@ void amc_logger_log(struct amc_logger *logger, int level,
                                           use a raw tuple for fixed decimals */
 #define AMC_KV_STR(key_, val_)  (key_, "\"%s\"", (val_))
 #define AMC_KV_BOOL(key_, val_) (key_, "%s", (val_) ? "true" : "false")
+/* Like AMC_KV_STR but safe for ARBITRARY data: the value is JSON-escaped at
+ * runtime (see amc_logger_json_escape above). Use _STR for values known to
+ * be clean, _STR_ESC whenever the content is not fully under your control. */
+#define AMC_KV_STR_ESC(key_, val_) (key_, "\"%s\"", amc_logger_json_escape(val_))
 
 /* -- internals ----------------------------------------------------------- */
 #define AMC_JSON_CAT2_(a, b) a##b

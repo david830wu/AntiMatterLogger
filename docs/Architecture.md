@@ -651,7 +651,19 @@ confined to that target). Measured results and the tail investigation: §14.13.
     `("armed", "true")`). Capacity 1–16 pairs; 17+ dispatches to the deliberately
     undefined `AMC_JSON_FMT_TOO_MANY_KEYS`, making the compile error self-explanatory.
     Typed sugar `AMC_KV_INT/I64/U64/F64/STR/BOOL` expands to plain tuples. No `src/`
-    changes; runtime escaping of `%s` values stays deferred (Design §13).
+    changes for the composer itself.
+15. **`AMC_KV_STR_ESC` runtime escaping** (v1.1, Design Amendment 2). The one runtime
+    piece of the payload story: `amc_logger_json_escape()` escapes into a per-thread
+    ring of 16 × 1 KB **static TLS** buffers — 16 slots matches the composer's pair
+    cap so every escaped value in one call gets its own buffer; static TLS (rather
+    than lazily heap-allocated) means no hot-path allocation and nothing leaks when
+    threads exit (LSan-clean). Escapes `"`, `\`, and control bytes (`\n \r \t \b \f`,
+    else `\u00XX`) — embedded newlines can no longer break the line-oriented format;
+    UTF-8 passes through; NULL renders as the empty string. Overlong output ends with
+    `...` and reuses `st_truncated` (feeding the MessageLoss summary). Because macro
+    arguments are unevaluated for filtered calls, escaping costs nothing on disabled
+    levels. Returned pointers are documented as valid only within the log call they
+    appear in. Library version bumped to 0.2.0 (additive API; the docs' "v1.1").
 
 ## 15. Implementation order (each milestone ends green)
 

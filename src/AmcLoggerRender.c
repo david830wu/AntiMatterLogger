@@ -101,6 +101,75 @@ static void render_ts(struct ap *a, const struct timespec *ts)
     ap_mem(a, usec, 6);
 }
 
+/* ---- runtime JSON string escaping (AMC_KV_STR_ESC, v1.1) -----------------
+ * Escapes into a per-thread ring of AMC_JSON_ESC_SLOTS static buffers, so up
+ * to 16 escaped values can coexist inside one log call (the composer's pair
+ * cap) with no heap allocation and nothing to leak when a thread exits. The
+ * returned pointer is only meant to live as a payload argument of the log
+ * call it appears in. Escaped: '"', '\', and all control bytes (short forms
+ * \b \f \n \r \t, otherwise \u00XX) — an embedded newline therefore can no
+ * longer break the one-line log format. UTF-8 passes through unchanged.
+ * NULL renders as the empty string. Output longer than the slot ends with
+ * "..." and increments the truncated statistic. */
+const char *amc_logger_json_escape(const char *s)
+{
+    static _Thread_local char     ring[AMC_JSON_ESC_SLOTS][AMC_JSON_ESC_BUF];
+    static _Thread_local unsigned next;
+    static const char hex[] = "0123456789abcdef";
+
+    char *out = ring[next];
+    next = (next + 1u) % AMC_JSON_ESC_SLOTS;
+
+    if (s == NULL) {
+        out[0] = '\0';
+        return out;
+    }
+    size_t pos = 0;
+    int cut = 0;
+    for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
+        unsigned char c = *p;
+        char sub = 0;
+        size_t need = 1;
+        switch (c) {
+        case '"':  sub = '"';  need = 2; break;
+        case '\\': sub = '\\'; need = 2; break;
+        case '\b': sub = 'b';  need = 2; break;
+        case '\f': sub = 'f';  need = 2; break;
+        case '\n': sub = 'n';  need = 2; break;
+        case '\r': sub = 'r';  need = 2; break;
+        case '\t': sub = 't';  need = 2; break;
+        default:
+            if (c < 0x20)
+                need = 6;
+            break;
+        }
+        if (pos + need > AMC_JSON_ESC_BUF - 4) {  /* keep room for "..." + NUL */
+            cut = 1;
+            break;
+        }
+        if (sub) {
+            out[pos++] = '\\';
+            out[pos++] = sub;
+        } else if (c < 0x20) {
+            out[pos++] = '\\';
+            out[pos++] = 'u';
+            out[pos++] = '0';
+            out[pos++] = '0';
+            out[pos++] = hex[c >> 4];
+            out[pos++] = hex[c & 0xf];
+        } else {
+            out[pos++] = (char)c;
+        }
+    }
+    if (cut) {
+        memcpy(out + pos, "...", 3);
+        pos += 3;
+        AMC_STAT_INC(st_truncated);
+    }
+    out[pos] = '\0';
+    return out;
+}
+
 size_t amc_internal_render_line(char *dst, size_t cap, const struct amc_msg *m,
                                 const char *payload, int *out_truncated)
 {

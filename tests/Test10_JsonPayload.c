@@ -21,9 +21,15 @@
  *  ("armed", "true") with no value arguments at all.
  *
  *  Rules: 1..16 pairs (17+ fails to compile mentioning TOO_MANY_KEYS); for an
- *  empty payload omit the payload entirely; values are NOT escaped at runtime
- *  — a %s string containing '"' or '\' still breaks the JSON (planned v1.1
- *  helper). Keys and formats must be string literals.
+ *  empty payload omit the payload entirely; keys and formats must be string
+ *  literals.
+ *
+ *  Strings: AMC_KV_STR trusts its value (no runtime cost) — a '"', '\' or
+ *  newline inside it WILL break the JSON. For arbitrary data use
+ *  AMC_KV_STR_ESC: the value is JSON-escaped at runtime into a per-thread
+ *  buffer (up to 16 escaped values per call, ~1 KB each — longer values end
+ *  with "..." and count into stats.truncated). Escaping also neutralizes
+ *  embedded newlines, so hostile content cannot break the one-line format.
  * ============================================================================
  */
 
@@ -153,6 +159,70 @@ static void test_SixteenPairsIsTheLimit(void)
     free(out);
 }
 
+/* AMC_KV_STR_ESC makes hostile content safe: quotes, backslashes, tabs and
+ * control bytes are escaped — and the embedded newline does NOT split the
+ * log line. Compare: the same value through AMC_KV_STR would produce broken
+ * JSON spread over two lines. */
+static void test_EscapedStringValuesStaySafe(void)
+{
+    const char *hostile = "he said \"stop\\go\"\nline2\ttab\x01";
+    capture_stdout();
+    amc_logger_init(NULL);
+    AMC_LOGGER_INFO("Hostile", AMC_JSON(AMC_KV_STR_ESC("msg", hostile)));
+    amc_logger_shutdown();
+    char *out = release_stdout();
+
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, amc_count_lines(out),
+        "an embedded newline must not break the one-line format");
+    char line[512];
+    amc_assert_log_line(amc_get_line(out, 0, line, sizeof(line)),
+                        "INFO", "Test10_JsonPayload", __func__, "Hostile", "-",
+                        "{\"msg\":\"he said \\\"stop\\\\go\\\"\\nline2\\ttab\\u0001\"}");
+    free(out);
+}
+
+/* several escaped values in one call get distinct buffers; NULL renders as
+ * the empty string; UTF-8 passes through unchanged */
+static void test_EscapeRingNullAndUtf8(void)
+{
+    capture_stdout();
+    amc_logger_init(NULL);
+    AMC_LOGGER_INFO("Multi", AMC_JSON(AMC_KV_STR_ESC("a", "one\"1"),
+                                      AMC_KV_STR_ESC("b", "two\\2"),
+                                      AMC_KV_STR_ESC("c", NULL),
+                                      AMC_KV_STR_ESC("d", "\xe4\xbb\xb7")));
+    amc_logger_shutdown();
+    char *out = release_stdout();
+
+    char line[512];
+    amc_assert_log_line(amc_get_line(out, 0, line, sizeof(line)),
+                        "INFO", "Test10_JsonPayload", __func__, "Multi", "-",
+                        "{\"a\":\"one\\\"1\",\"b\":\"two\\\\2\",\"c\":\"\",\"d\":\"\xe4\xbb\xb7\"}");
+    free(out);
+}
+
+/* an escaped value longer than its buffer ends with "..." inside the string
+ * (still valid JSON) and counts into stats.truncated — distinct from the
+ * whole-line ...(truncated) marker, which does not fire here */
+static void test_OversizedEscapedValueIsCutAndCounted(void)
+{
+    char big[2000];
+    memset(big, 'x', sizeof(big) - 1);
+    big[sizeof(big) - 1] = '\0';
+    capture_stdout();
+    amc_logger_init(NULL);
+    AMC_LOGGER_INFO("BigValue", AMC_JSON(AMC_KV_STR_ESC("data", big)));
+    amc_logger_shutdown();
+    char *out = release_stdout();
+
+    TEST_ASSERT_EQUAL_INT(1, amc_count_lines_containing(out, "x...\"}"));
+    TEST_ASSERT_EQUAL_INT(0, amc_count_lines_containing(out, "...(truncated)"));
+    struct amc_logger_stats st;
+    amc_logger_get_stats(&st);
+    TEST_ASSERT_EQUAL_UINT64(1, st.truncated);
+    free(out);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -162,5 +232,8 @@ int main(void)
     RUN_TEST(test_RawTuplesForPrecisionNestingAndConstants);
     RUN_TEST(test_WorksWithTraderIdVariants);
     RUN_TEST(test_SixteenPairsIsTheLimit);
+    RUN_TEST(test_EscapedStringValuesStaySafe);
+    RUN_TEST(test_EscapeRingNullAndUtf8);
+    RUN_TEST(test_OversizedEscapedValueIsCutAndCounted);
     return UNITY_END();
 }

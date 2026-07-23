@@ -5,8 +5,12 @@
 supersedes `InitDesign.md`; where they differ, this document wins.
 
 **Amendment (2026-07-22, agreed)**: the `AMC_JSON` compile-time payload composer and
-`AMC_KV_*` typed helpers were added to §3 rule 6 and §8; runtime string escaping is
-explicitly deferred to v1.1 (§13).
+`AMC_KV_*` typed helpers were added to §3 rule 6 and §8; runtime string escaping was
+deferred to v1.1 (§13).
+
+**Amendment 2 (2026-07-23, agreed — v1.1)**: `AMC_KV_STR_ESC` /
+`amc_logger_json_escape()` runtime escaping delivered (§3 rule 6, §8); library
+version 0.2.0.
 
 **Next step**: architecture design (module/file layout, public header, core data structures).
 
@@ -87,7 +91,11 @@ Rules:
    identical single format literal of the raw form — keys auto-quoted, structure generated,
    zero runtime cost, printf checking preserved. 1–16 pairs; raw tuples cover custom
    precision, nested objects, and constant fragments. The raw string form remains valid.
-   Values are still not escaped at runtime (see §13 for the deferred v1.1 helper).
+   Plain `%s` values are not escaped; for arbitrary data, `AMC_KV_STR_ESC` (v1.1)
+   JSON-escapes the value at runtime via `amc_logger_json_escape()` — quotes,
+   backslashes and control bytes, so embedded newlines cannot break the one-line
+   format; up to 16 escaped values per call, ~1 KB each, overlong values end with
+   `...` and count into `stats.truncated`.
 
 ## 4. Execution model
 
@@ -252,6 +260,8 @@ AMC_LOGGER_CRITICAL(event, ...)       AMC_LOGGER_CRITICAL_ID(event, trader_id, .
 AMC_JSON((key, fmt, value...) , ...)          /* 1..16 pairs                        */
 AMC_KV_INT(key, v)   AMC_KV_I64(key, v)   AMC_KV_U64(key, v)
 AMC_KV_F64(key, v)   AMC_KV_STR(key, v)   AMC_KV_BOOL(key, v)
+AMC_KV_STR_ESC(key, v)                        /* v1.1: runtime JSON escaping        */
+const char *amc_logger_json_escape(const char *s);   /* the escaping primitive      */
 ```
 
 `amc_logger_init(NULL)` behaves exactly like loading an empty config file: every key takes
@@ -346,5 +356,4 @@ colors; expected-output examples use quoted-key JSON payloads.
 Daily rollover / size rotation; `amc_logger_set_level()` and SIGHUP config reload;
 per-logger sink selection and per-sink levels; Windows; console colors; TSC-based
 timestamps; NanoLog-style binary deferred logging if a sub-100 ns producer path is ever
-required; runtime JSON string escaping for `%s` payload values (v1.1 candidate:
-`AMC_KV_STR_ESC`, escaping into a stack buffer at some runtime cost).
+required. (Runtime JSON string escaping was delivered in v1.1 — Amendment 2.)

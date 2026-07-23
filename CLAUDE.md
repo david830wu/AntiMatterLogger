@@ -96,7 +96,9 @@ process, ever.
   literal-only contract is documented API.
 - **`AMC_JSON` must stay a pure compile-time literal composer** (Architecture §14.14):
   it expands to exactly the raw form's format literal + args — Test10 asserts byte
-  equality. Never turn it into anything with runtime cost.
+  equality. Never turn it into anything with runtime cost. The single deliberate
+  runtime piece is `AMC_KV_STR_ESC` → `amc_logger_json_escape()` (per-thread static
+  TLS ring, 16 × 1 KB — §14.15); keep its slot count ≥ the composer's pair cap.
 - **Fail fast** (philosophy 00): config mistakes are init failures with a
   `file:line: message` stderr diagnostic — never a silent default. Every new
   diagnostic needs a chapter-04 test asserting its exact text. Runtime loss (drops,

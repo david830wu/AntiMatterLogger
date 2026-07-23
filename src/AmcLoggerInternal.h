@@ -36,6 +36,8 @@
 #define AMC_CONFIG_SIZE_MAX   (1024 * 1024)
 #define AMC_PATH_MAX          4096
 #define AMC_TRUNC_MARKER      "...(truncated)"
+#define AMC_JSON_ESC_SLOTS    16     /* one per possible AMC_JSON pair        */
+#define AMC_JSON_ESC_BUF      1024   /* per escaped value, incl. "..." + NUL  */
 
 #define AMC_ALIGN64(x) (((x) + 63u) & ~((size_t)63u))
 

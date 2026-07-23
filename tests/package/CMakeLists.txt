@@ -9,7 +9,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(AmcPackageSmoke LANGUAGES C)
 
-find_package(AntiMatterLogger 0.1 REQUIRED)
+find_package(AntiMatterLogger 0.2 REQUIRED)
 
 add_executable(PackageSmoke PackageSmoke.c)
 set_target_properties(PackageSmoke PROPERTIES C_STANDARD 11 C_EXTENSIONS ON)

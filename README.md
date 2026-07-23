@@ -24,7 +24,9 @@ zero dependencies beyond libc and pthreads).
   `AMC_KV_*` typed helpers generate the payload structure for you (quoted keys,
   colons, commas, braces) and expand to the identical single format literal of the
   raw form: zero runtime cost, printf type checking preserved, malformed JSON
-  structure becomes a compile error
+  structure becomes a compile error. For arbitrary data, `AMC_KV_STR_ESC`
+  JSON-escapes the value at runtime — hostile quotes, backslashes, and embedded
+  newlines can't break the JSON or the one-line format
 - **Fail-fast YAML configuration**: a strict subset parser; any mistake — typo'd key,
   bad level, tab, out-of-subset YAML — fails init with a `file:line:` diagnostic
 - **Compile-time level stripping** (`AMC_LOGGER_ACTIVE_LEVEL`) and cheap runtime
@@ -110,7 +112,7 @@ Consume from CMake either way — the target name is identical:
 # vendored:
 add_subdirectory(AntiMatterLogger)
 # or installed (cmake --install build --prefix <prefix>):
-find_package(AntiMatterLogger 0.1 REQUIRED)
+find_package(AntiMatterLogger 0.2 REQUIRED)
 
 target_link_libraries(app PRIVATE AntiMatter::AmcLogger)
 ```
@@ -136,7 +138,7 @@ order — each demonstrates one slice of practical usage, including the mistakes
 | 07 AsyncAndReliability | flush visibility, overflow policies, truncation, `critical_sync` |
 | 08 CompileTimeStrip | `AMC_LOGGER_ACTIVE_LEVEL` removes calls from the binary |
 | 09 MultiThreaded | lossless concurrent producers, per-thread ordering |
-| 10 JsonPayload | composing payloads with `AMC_JSON` and the `AMC_KV_*` helpers |
+| 10 JsonPayload | composing payloads with `AMC_JSON`, the `AMC_KV_*` helpers, and runtime escaping via `AMC_KV_STR_ESC` |
 
 The suite passes under ThreadSanitizer and ASan+UBSan. Tests use the vendored
 [Unity](https://github.com/ThrowTheSwitch/Unity) framework (`third_party/unity`, MIT).
