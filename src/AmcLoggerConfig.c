@@ -267,6 +267,7 @@ void amc_internal_config_defaults(struct amc_config *out)
     out->default_level    = AMC_LOGGER_LEVEL_INFO;
     out->async            = 1;
     out->critical_sync    = 0;
+    out->worker_cpu       = -1;   /* unpinned */
     out->utc_offset_hours = 8;
     out->policy           = AMC_POLICY_BLOCK;
     out->queue_size       = 8192;
@@ -292,14 +293,15 @@ void amc_internal_config_free(struct amc_config *cfg)
 
 enum root_key {
     RK_DEFAULT_LEVEL, RK_ASYNC, RK_QUEUE_SIZE, RK_POLICY, RK_MAX_MSG,
-    RK_FLUSH_MS, RK_UTC_OFFSET, RK_CRITICAL_SYNC, RK_SINKS, RK_LOGGERS,
+    RK_FLUSH_MS, RK_UTC_OFFSET, RK_CRITICAL_SYNC, RK_WORKER_CPU,
+    RK_SINKS, RK_LOGGERS,
     RK_COUNT
 };
 
 static const char *const ROOT_KEYS[RK_COUNT] = {
     "default_level", "async", "queue_size", "queue_full_policy",
     "max_message_size", "flush_every_ms", "utc_offset_hours", "critical_sync",
-    "sinks", "loggers"
+    "worker_cpu", "sinks", "loggers"
 };
 
 int amc_internal_config_parse(const char *text, size_t len, const char *diag_name,
@@ -499,6 +501,16 @@ int amc_internal_config_parse(const char *text, size_t len, const char *diag_nam
             case 0: out->utc_offset_hours = (int)v; break;
             case -2:
                 fail(&e, p->line_no, "utc_offset_hours out of range (-12..14)");
+                goto err;
+            default: goto err_int;
+            }
+            break;
+        case RK_WORKER_CPU:
+            switch (parse_int_range(p->val, 0, AMC_WORKER_CPU_MAX, &v)) {
+            case 0: out->worker_cpu = (int)v; break;
+            case -2:
+                fail(&e, p->line_no, "worker_cpu out of range (0..%d)",
+                     AMC_WORKER_CPU_MAX);
                 goto err;
             default: goto err_int;
             }

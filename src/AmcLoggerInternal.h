@@ -38,6 +38,8 @@
 #define AMC_TRUNC_MARKER      "...(truncated)"
 #define AMC_JSON_ESC_SLOTS    16     /* one per possible AMC_JSON pair        */
 #define AMC_JSON_ESC_BUF      1024   /* per escaped value, incl. "..." + NUL  */
+#define AMC_WORKER_CPU_MAX    1023   /* fixed cpu_set_t width; CPU_SET beyond
+                                      * it is undefined behavior              */
 
 #define AMC_ALIGN64(x) (((x) + 63u) & ~((size_t)63u))
 
@@ -108,6 +110,8 @@ struct amc_config {
     int      default_level;
     int      async;
     int      critical_sync;
+    int      worker_cpu;              /* -1 = unpinned (Linux only; ignored in
+                                       * sync mode; macOS warns + unpinned)   */
     int      utc_offset_hours;
     enum amc_policy policy;
     uint32_t queue_size;

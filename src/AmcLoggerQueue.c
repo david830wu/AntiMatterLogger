@@ -24,6 +24,7 @@
 #include "AmcLoggerInternal.h"
 
 #include <errno.h>
+#include <sched.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
@@ -272,14 +273,42 @@ int amc_internal_async_start(char *err, size_t errsz)
     q->stop = 0;
     q->inited = 1;
 
-    /* the worker inherits a fully-blocked signal mask */
-    sigset_t all, old;
-    sigfillset(&all);
-    pthread_sigmask(SIG_SETMASK, &all, &old);
-    int rc = pthread_create(&g_amc.worker, NULL, worker_main, NULL);
-    pthread_sigmask(SIG_SETMASK, &old, NULL);
+    /* worker_cpu: pin via the CREATION attributes, so the worker is born on
+     * its core and never executes a quantum anywhere else. The kernel
+     * validates the mask inside pthread_create (EINVAL for a core this
+     * machine does not have) — a bad pin fails init, never runs unpinned.
+     * macOS has no pinning API (Mach affinity tags are hints): per the
+     * agreed policy it warns once and runs unpinned. */
+    int rc = 0;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+#if defined(__linux__)
+    if (g_amc.cfg.worker_cpu >= 0) {
+        cpu_set_t set;
+        CPU_ZERO(&set);
+        CPU_SET(g_amc.cfg.worker_cpu, &set);
+        rc = pthread_attr_setaffinity_np(&attr, sizeof(set), &set);
+    }
+#else
+    if (g_amc.cfg.worker_cpu >= 0)
+        fprintf(stderr, "amc_logger: worker_cpu is not supported on this "
+                        "platform; worker runs unpinned\n");
+#endif
+    if (rc == 0) {
+        /* the worker inherits a fully-blocked signal mask */
+        sigset_t all, old;
+        sigfillset(&all);
+        pthread_sigmask(SIG_SETMASK, &all, &old);
+        rc = pthread_create(&g_amc.worker, &attr, worker_main, NULL);
+        pthread_sigmask(SIG_SETMASK, &old, NULL);
+    }
+    pthread_attr_destroy(&attr);
     if (rc != 0) {
-        snprintf(err, errsz, "cannot create worker thread: %s", strerror(rc));
+        if (g_amc.cfg.worker_cpu >= 0)
+            snprintf(err, errsz, "cannot create worker thread pinned to cpu %d: %s",
+                     g_amc.cfg.worker_cpu, strerror(rc));
+        else
+            snprintf(err, errsz, "cannot create worker thread: %s", strerror(rc));
         pthread_mutex_destroy(&q->mtx);
         pthread_cond_destroy(&q->not_empty);
         pthread_cond_destroy(&q->not_full);

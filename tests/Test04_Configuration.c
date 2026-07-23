@@ -188,6 +188,31 @@ static void test_OutOfRangeNumbersAreRejected(void)
     free(err);
 }
 
+/* worker_cpu (chapter 07) is bounded by the OS cpu-set width */
+static void test_WorkerCpuOutOfRangeRejected(void)
+{
+    amc_write_file("cfg.yaml", "worker_cpu: 1024\n");
+    capture_stderr();
+    int rc = amc_logger_init("cfg.yaml");
+    char *err = release_stderr();
+
+    TEST_ASSERT_EQUAL_INT(-1, rc);
+    TEST_ASSERT_EQUAL_INT(1,
+        amc_count_lines_containing(err, "cfg.yaml:1: worker_cpu out of range (0..1023)"));
+    free(err);
+}
+
+/* in sync mode there is no worker thread; worker_cpu is accepted and
+ * silently ignored (agreed decision) */
+static void test_WorkerCpuIgnoredInSyncMode(void)
+{
+    amc_write_file("cfg.yaml",
+        "async: false\n"
+        "worker_cpu: 2\n");
+    TEST_ASSERT_EQUAL_INT(0, amc_logger_init("cfg.yaml"));
+    amc_logger_shutdown();
+}
+
 /* comments and quoting styles that ARE inside the subset */
 static void test_CommentsAndQuotesAccepted(void)
 {
@@ -215,6 +240,8 @@ int main(void)
     RUN_TEST(test_UnknownSinkIsRejected);
     RUN_TEST(test_UnknownPathVariableIsRejected);
     RUN_TEST(test_OutOfRangeNumbersAreRejected);
+    RUN_TEST(test_WorkerCpuOutOfRangeRejected);
+    RUN_TEST(test_WorkerCpuIgnoredInSyncMode);
     RUN_TEST(test_CommentsAndQuotesAccepted);
     return UNITY_END();
 }

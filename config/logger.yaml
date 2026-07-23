@@ -11,6 +11,9 @@ max_message_size: 2048         # bytes per rendered line incl. header (256..8192
 flush_every_ms: 1000           # async: periodic flush; 0 disables
 utc_offset_hours: 8            # timestamps and $TODAY (-12..14)
 critical_sync: false           # async: CRITICAL bypasses the queue
+# worker_cpu: 3                # optional: pin the async worker to CPU core 3
+#                              # (0..1023; Linux only -- macOS warns and runs
+#                              # unpinned; ignored when async is false)
 
 sinks:                         # omitted entirely -> stdout only
   stdout: {}

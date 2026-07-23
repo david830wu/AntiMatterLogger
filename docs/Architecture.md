@@ -518,6 +518,7 @@ empty document (FQ2): defaults, stdout only.
 | `flush_every_ms` | 0 (off) … 3,600,000 | 1000 |
 | `utc_offset_hours` | −12 … +14 | 8 |
 | `critical_sync` | true/false | false |
+| `worker_cpu` | 0 … 1023, or absent | absent (worker unpinned) |
 | module name | ≤ 127 chars | — |
 | worker batch | ≤ 256 msgs / 256 KB private buffer | — |
 | config file size | ≤ 1 MB | — |
@@ -664,6 +665,21 @@ confined to that target). Measured results and the tail investigation: §14.13.
     arguments are unevaluated for filtered calls, escaping costs nothing on disabled
     levels. Returned pointers are documented as valid only within the log call they
     appear in. Library version bumped to 0.2.0 (additive API; the docs' "v1.1").
+16. **`worker_cpu` pinning** (Design Amendment 3, planned and agreed 2026-07-23).
+    The async worker pins via `pthread_attr_setaffinity_np` on the CREATION
+    attributes — the thread is born on its core and never executes a quantum
+    anywhere else. The kernel validates the mask inside `pthread_create` (EINVAL
+    for a core the machine doesn't have), so a bad pin fails init with "cannot
+    create worker thread pinned to cpu N" — on Linux the worker never silently
+    runs unpinned. The 1023 upper bound is the fixed `cpu_set_t` width (`CPU_SET`
+    beyond it is UB). Agreed softenings: macOS (no pinning API — Mach affinity
+    tags are hints) warns on stderr and runs unpinned; sync mode ignores the key.
+    NUMA: the ring's first-touch deliberately stays with the `amc_logger_init`
+    caller so slot pages land near the producers, favoring enqueue latency over
+    drain-side locality — initialize on the node your producers run on. Verified
+    black-box in Test07 via `/proc/self/task/<tid>/comm == "amc-worker"` →
+    `Cpus_allowed_list`; the macOS CI legs verify the warn-and-run path. Version
+    0.3.0.
 
 ## 15. Implementation order (each milestone ends green)
 

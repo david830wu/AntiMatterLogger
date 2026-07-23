@@ -31,6 +31,9 @@ zero dependencies beyond libc and pthreads).
   bad level, tab, out-of-subset YAML — fails init with a `file:line:` diagnostic
 - **Compile-time level stripping** (`AMC_LOGGER_ACTIVE_LEVEL`) and cheap runtime
   filtering (one relaxed atomic load per filtered call)
+- **Worker CPU pinning** (`worker_cpu`) — the async worker is created directly on a
+  designated core and never runs anywhere else, keeping the logging thread off
+  carefully-assigned trading cores (Linux; macOS warns and runs unpinned)
 - Sinks: `stdout` and `basic_file` with `$TODAY`/`$PID` path variables and automatic
   directory creation
 
@@ -83,6 +86,7 @@ max_message_size: 2048         # bytes per line; overflow ends with ...(truncate
 flush_every_ms: 1000
 utc_offset_hours: 8            # timestamps and $TODAY
 critical_sync: false           # CRITICAL bypasses the queue
+# worker_cpu: 3                # pin the async worker to a core (Linux; optional)
 
 sinks:                         # omitted entirely -> stdout only
   stdout: {}
@@ -112,7 +116,7 @@ Consume from CMake either way — the target name is identical:
 # vendored:
 add_subdirectory(AntiMatterLogger)
 # or installed (cmake --install build --prefix <prefix>):
-find_package(AntiMatterLogger 0.2 REQUIRED)
+find_package(AntiMatterLogger 0.3 REQUIRED)
 
 target_link_libraries(app PRIVATE AntiMatter::AmcLogger)
 ```

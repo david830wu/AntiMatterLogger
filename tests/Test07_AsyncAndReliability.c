@@ -26,8 +26,65 @@
 
 #include "TestSupport.h"
 
+#if defined(__linux__)
+#include <dirent.h>
+#endif
+
 void setUp(void)   { amc_internal_test_reset(); }
 void tearDown(void){ amc_internal_test_reset(); amc_release_all_streams(); }
+
+#if defined(__linux__)
+/* procfs files report size 0, so read with fread, not seek/tell */
+static int read_proc_file(const char *path, char *buf, size_t sz)
+{
+    FILE *fp = fopen(path, "r");
+    if (!fp)
+        return -1;
+    size_t n = fread(buf, 1, sz - 1, fp);
+    fclose(fp);
+    buf[n] = '\0';
+    return 0;
+}
+
+/* find the task named "amc-worker" and copy its Cpus_allowed_list */
+static int worker_allowed_cpus(char *out, size_t outsz)
+{
+    DIR *d = opendir("/proc/self/task");
+    if (!d)
+        return -1;
+    int found = -1;
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL) {
+        if (e->d_name[0] == '.')
+            continue;
+        char path[512], buf[4096];
+        snprintf(path, sizeof(path), "/proc/self/task/%s/comm", e->d_name);
+        if (read_proc_file(path, buf, sizeof(buf)) != 0)
+            continue;
+        buf[strcspn(buf, "\n")] = '\0';
+        if (strcmp(buf, "amc-worker") != 0)
+            continue;
+        snprintf(path, sizeof(path), "/proc/self/task/%s/status", e->d_name);
+        if (read_proc_file(path, buf, sizeof(buf)) != 0)
+            break;
+        const char *p = strstr(buf, "Cpus_allowed_list:");
+        if (!p)
+            break;
+        p += strlen("Cpus_allowed_list:");
+        while (*p == ' ' || *p == '\t')
+            p++;
+        size_t n = strcspn(p, "\n");
+        if (n >= outsz)
+            n = outsz - 1;
+        memcpy(out, p, n);
+        out[n] = '\0';
+        found = 0;
+        break;
+    }
+    closedir(d);
+    return found;
+}
+#endif
 
 /* flush() = "everything I logged so far is now on disk" */
 static void test_FlushMakesLinesVisibleMidRun(void)
@@ -205,6 +262,65 @@ static void test_SyncModeWritesInline(void)
     amc_logger_shutdown();
 }
 
+/* HFT deployments assign every core deliberately: `worker_cpu: N` creates the
+ * async worker directly ON core N (it never executes anywhere else), keeping
+ * the logging thread off trading cores. An impossible core fails init loudly —
+ * the worker never silently runs unpinned on Linux. On macOS there is no
+ * pinning API: the library warns once on stderr and runs unpinned. NUMA note:
+ * the queue ring's pages follow first-touch by the amc_logger_init() caller,
+ * so init on the node your producers run on. */
+static void test_WorkerCpuControlsTheWorkerThread(void)
+{
+#if defined(__linux__)
+    unlink("pin.log");
+    amc_write_file("cfg.yaml",
+        "worker_cpu: 0\n"
+        "sinks:\n"
+        "  basic_file: \"./pin.log\"\n");
+    TEST_ASSERT_EQUAL_INT(0, amc_logger_init("cfg.yaml"));
+
+    char cpus[64];
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, worker_allowed_cpus(cpus, sizeof(cpus)),
+                                  "amc-worker task not found under /proc");
+    TEST_ASSERT_EQUAL_STRING("0", cpus);
+
+    AMC_LOGGER_INFO("PinnedAndWorking");
+    amc_logger_shutdown();
+    char *file = amc_read_file("pin.log");
+    TEST_ASSERT_EQUAL_INT(1, amc_count_lines(file));
+    free(file);
+
+    /* an in-range core this machine does not have: init fails loudly */
+    if (sysconf(_SC_NPROCESSORS_CONF) <= 1023) {
+        amc_internal_test_reset();
+        amc_write_file("cfg.yaml", "worker_cpu: 1023\n");
+        capture_stderr();
+        int rc = amc_logger_init("cfg.yaml");
+        char *errtxt = release_stderr();
+        TEST_ASSERT_EQUAL_INT(-1, rc);
+        TEST_ASSERT_EQUAL_INT(1, amc_count_lines_containing(errtxt,
+            "cannot create worker thread pinned to cpu 1023"));
+        free(errtxt);
+    }
+#else
+    /* macOS: warn once, run unpinned, logging still works */
+    amc_write_file("cfg.yaml", "worker_cpu: 0\n");
+    capture_stdout();
+    capture_stderr();
+    int rc = amc_logger_init("cfg.yaml");
+    AMC_LOGGER_INFO("UnpinnedButAlive");
+    amc_logger_shutdown();
+    char *errtxt = release_stderr();
+    char *out = release_stdout();
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_EQUAL_INT(1, amc_count_lines_containing(errtxt,
+        "worker_cpu is not supported on this platform"));
+    TEST_ASSERT_EQUAL_INT(1, amc_count_lines_containing(out, "UnpinnedButAlive"));
+    free(errtxt);
+    free(out);
+#endif
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -215,5 +331,6 @@ int main(void)
     RUN_TEST(test_TruncationIsVisibleAndCounted);
     RUN_TEST(test_CriticalSyncWritesBeforeReturning);
     RUN_TEST(test_SyncModeWritesInline);
+    RUN_TEST(test_WorkerCpuControlsTheWorkerThread);
     return UNITY_END();
 }

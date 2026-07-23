@@ -12,6 +12,12 @@ deferred to v1.1 (§13).
 `amc_logger_json_escape()` runtime escaping delivered (§3 rule 6, §8); library
 version 0.2.0.
 
+**Amendment 3 (2026-07-23, agreed)**: `worker_cpu` config key — pin the async worker
+thread to one CPU core at creation (§7.1); HFT deployments assign cores deliberately
+and a floating logging thread pollutes trading cores. Linux only: on macOS the
+library warns on stderr and runs unpinned; in sync mode the key is silently ignored
+(no worker exists). An impossible core fails init loudly. Library version 0.3.0.
+
 **Next step**: architecture design (module/file layout, public header, core data structures).
 
 Decision references like (D3) or (Q14) point to the numbered items in `Answer1.md`;
@@ -197,6 +203,9 @@ max_message_size: 2048         # bytes per rendered line, incl. header and \n
 flush_every_ms: 1000           # async: periodic flush; 0 disables
 utc_offset_hours: 8            # timestamps and $TODAY
 critical_sync: false           # async: CRITICAL bypasses the queue (Q13)
+# worker_cpu: 3                # optional (Amendment 3): pin the async worker to
+#                              # this CPU core (0..1023; Linux — macOS warns and
+#                              # runs unpinned; ignored when async is false)
 
 sinks:                         # omitted entirely → stdout only
   stdout: {}
