@@ -1,0 +1,10 @@
+@PACKAGE_INIT@
+
+# AmcLogger links Threads::Threads as a PUBLIC dependency; resolve it for the
+# consumer before importing the targets.
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+
+include("${CMAKE_CURRENT_LIST_DIR}/AntiMatterLoggerTargets.cmake")
+
+check_required_components(AntiMatterLogger)

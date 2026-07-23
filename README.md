@@ -104,8 +104,21 @@ cmake -S . -B build && cmake --build build -j     # static lib + tests
 ctest --test-dir build --output-on-failure        # run the test suite
 ```
 
-Consume from CMake: `add_subdirectory(AntiMatterLogger)` and link
-`AntiMatter::AmcLogger`; include `AmcLogger.h` (the header is C-only).
+Consume from CMake either way — the target name is identical:
+
+```cmake
+# vendored:
+add_subdirectory(AntiMatterLogger)
+# or installed (cmake --install build --prefix <prefix>):
+find_package(AntiMatterLogger 0.1 REQUIRED)
+
+target_link_libraries(app PRIVATE AntiMatter::AmcLogger)
+```
+
+The install tree carries the full CMake package (targets export, config with the
+Threads dependency, `SameMinorVersion` version file) under
+`lib/cmake/AntiMatterLogger/`; `tests/package/` is a smoke-test consumer that CI
+builds against a fresh install. Include `AmcLogger.h` (the header is C-only).
 
 ## The tests are the manual
 

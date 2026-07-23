@@ -20,6 +20,7 @@
 #endif
 
 #include <stdatomic.h>
+#include <stddef.h>   /* NULL — amc_logger_init(NULL) is the canonical first call */
 #include <stdint.h>
 
 /* ---- Severity levels (ascending) ---- */

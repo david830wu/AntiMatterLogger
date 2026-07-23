@@ -55,3 +55,12 @@ jobs:
           ./build/amc_example
           ./build/BenchEnqueue
           ./build/BenchThroughput
+
+      # prove the installed package: find_package + AntiMatter::AmcLogger
+      - name: Package smoke test (install + find_package)
+        if: matrix.config == 'release'
+        run: |
+          cmake --install build --prefix "$PWD/_prefix"
+          cmake -S tests/package -B build-pkg -DCMAKE_PREFIX_PATH="$PWD/_prefix"
+          cmake --build build-pkg
+          ./build-pkg/PackageSmoke | grep -q '"via":"find_package"'

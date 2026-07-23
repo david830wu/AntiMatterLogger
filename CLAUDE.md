@@ -31,6 +31,15 @@ taskset -c 2,3 ./build-rel/BenchEnqueue     # pin TWO cores: worker needs its ow
 # spdlog comparison: add -DAMC_BENCH_SPDLOG=ON (FetchContent, needs network)
 ```
 
+Package export (find_package) is validated by `tests/package/` against a fresh
+install; after touching install/export logic run:
+
+```bash
+cmake --install build --prefix /tmp/amc-prefix
+cmake -S tests/package -B /tmp/amc-pkg -DCMAKE_PREFIX_PATH=/tmp/amc-prefix
+cmake --build /tmp/amc-pkg && /tmp/amc-pkg/PackageSmoke
+```
+
 Before accepting any queue/worker change: all three suites, the TSan stress loop
 (`ctest -R "Test07|Test09"` ×25), and BenchEnqueue/BenchThroughput — the queue's
 tuning history and why each piece exists is Architecture §14.13; don't re-tune

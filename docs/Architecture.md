@@ -527,7 +527,12 @@ empty document (FQ2): defaults, stdout only.
 
 - **CMake ≥ 3.20**: target `amc_logger` (STATIC), `C_STANDARD 11` + `C_EXTENSIONS ON`
   (= gnu11), warnings `-Wall -Wextra -Wformat=2 -Werror`, link `Threads::Threads`.
-  Alias `AntiMatter::AmcLogger`; basic `install()` of the lib + header.
+  Alias `AntiMatter::AmcLogger`. The install tree is a full CMake package
+  (`find_package(AntiMatterLogger)`): targets export under the `AntiMatter::`
+  namespace (EXPORT_NAME `AmcLogger`), a package config that `find_dependency`s
+  Threads, a `SameMinorVersion` version file (0.x: minor bumps may break), and
+  GNUInstallDirs paths. `tests/package/` is the downstream smoke consumer CI runs
+  against a fresh install.
 - **Options**: `AMC_BUILD_TESTS` (ON when top-level), `AMC_BUILD_BENCH` (OFF),
   `AMC_BENCH_SPDLOG` (OFF; FetchContent, C++ confined to `bench/BenchSpdlog.cpp`),
   `AMC_BUILD_EXAMPLES` (OFF), `AMC_SANITIZE=off|address|thread|undefined`.

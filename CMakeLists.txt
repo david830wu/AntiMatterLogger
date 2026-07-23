@@ -22,6 +22,7 @@ set(AMC_SOURCES
     src/AmcLoggerRender.c
     src/AmcLoggerSink.c)
 
+include(GNUInstallDirs)
 find_package(Threads REQUIRED)
 
 function(amc_apply_common_props target)
@@ -34,12 +35,39 @@ endfunction()
 add_library(amc_logger STATIC ${AMC_SOURCES})
 target_include_directories(amc_logger
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-           $<INSTALL_INTERFACE:include>)
+           $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 amc_apply_common_props(amc_logger)
+set_target_properties(amc_logger PROPERTIES EXPORT_NAME AmcLogger)
 add_library(AntiMatter::AmcLogger ALIAS amc_logger)
 
-install(TARGETS amc_logger ARCHIVE DESTINATION lib)
-install(FILES include/AmcLogger.h DESTINATION include)
+# ---- installation and CMake package export ----
+# Downstream usage, identical to the add_subdirectory() form:
+#     find_package(AntiMatterLogger 0.1 REQUIRED)
+#     target_link_libraries(app PRIVATE AntiMatter::AmcLogger)
+# Validated by tests/package (run by CI against a fresh install tree).
+include(CMakePackageConfigHelpers)
+
+install(TARGETS amc_logger
+        EXPORT AntiMatterLoggerTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(FILES include/AmcLogger.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+install(EXPORT AntiMatterLoggerTargets
+        FILE AntiMatterLoggerTargets.cmake
+        NAMESPACE AntiMatter::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/AntiMatterLogger)
+
+configure_package_config_file(cmake/AntiMatterLoggerConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/AntiMatterLoggerConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/AntiMatterLogger)
+# 0.x versioning: minor bumps may break API, so only same-minor satisfies
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/AntiMatterLoggerConfigVersion.cmake
+    COMPATIBILITY SameMinorVersion)
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/AntiMatterLoggerConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/AntiMatterLoggerConfigVersion.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/AntiMatterLogger)
 
 # ---- tests: the executable user manual (tests/Test01..Test09) ----
 if(AMC_BUILD_TESTS)
