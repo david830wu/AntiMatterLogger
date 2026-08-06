@@ -70,15 +70,21 @@ static void registry_set_all_levels(int level)
     pthread_mutex_unlock(&g_registry.mtx);
 }
 
-/* ---- module derivation: basename of __FILE__ minus a trailing .c/.h ---- */
+/* ---- module derivation: basename of __FILE__ minus a trailing C/C++ source suffix ---- */
 
 static void derive_module(const char *file, char *out /* AMC_MODULE_MAX */)
 {
+    static const char *const suffixes[] = { ".cpp", ".hpp", ".cc", ".c", ".h" };
     const char *base = strrchr(file, '/');
     base = base ? base + 1 : file;
     size_t n = strlen(base);
-    if (n > 2 && (strcmp(base + n - 2, ".c") == 0 || strcmp(base + n - 2, ".h") == 0))
-        n -= 2;
+    for (size_t i = 0; i < sizeof suffixes / sizeof suffixes[0]; ++i) {
+        size_t sl = strlen(suffixes[i]);
+        if (n > sl && strcmp(base + n - sl, suffixes[i]) == 0) {
+            n -= sl;
+            break;
+        }
+    }
     if (n == 0) {
         base = "unknown";
         n = 7;
