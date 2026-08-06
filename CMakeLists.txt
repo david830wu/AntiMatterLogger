@@ -26,7 +26,9 @@ include(GNUInstallDirs)
 find_package(Threads REQUIRED)
 
 function(amc_apply_common_props target)
-    set_target_properties(${target} PROPERTIES C_STANDARD 11 C_EXTENSIONS ON)
+    # PIC: the static lib is embedded PRIVATE into AntiMatterFusion's SHARED model libraries
+    set_target_properties(${target} PROPERTIES C_STANDARD 11 C_EXTENSIONS ON
+                                               POSITION_INDEPENDENT_CODE ON)
     target_compile_options(${target} PRIVATE -Wall -Wextra -Wformat=2 -Werror)
     target_link_libraries(${target} PUBLIC Threads::Threads)
 endfunction()
