@@ -34,7 +34,7 @@ jobs:
 
       - name: Install gcc-13 (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y gcc-13
+        run: sudo apt-get update && sudo apt-get install -y gcc-13 g++-13
 
       - name: Configure
         env:
@@ -56,11 +56,16 @@ jobs:
           ./build/BenchEnqueue
           ./build/BenchThroughput
 
-      # prove the installed package: find_package + AntiMatter::AmcLogger
+      # prove the installed package: find_package + AntiMatter::AmcLogger, from BOTH a C
+      # and a C++ downstream target (the C++ twin covers the v2/v3 C++ header surface)
       - name: Package smoke test (install + find_package)
         if: matrix.config == 'release'
+        env:
+          CC: ${{ runner.os == 'Linux' && 'gcc-13' || 'clang' }}
+          CXX: ${{ runner.os == 'Linux' && 'g++-13' || 'clang++' }}
         run: |
           cmake --install build --prefix "$PWD/_prefix"
           cmake -S tests/package -B build-pkg -DCMAKE_PREFIX_PATH="$PWD/_prefix"
           cmake --build build-pkg
           ./build-pkg/PackageSmoke | grep -q '"via":"find_package"'
+          ./build-pkg/PackageSmokeCpp | grep -q '"lang":"c++"'
