@@ -8,6 +8,11 @@
  * amc_logger_get_stats and the AMC_LOGGER_* macros. Every other visible symbol is
  * macro plumbing — never call it directly.
  *
+ * C++ includers (v3): the FULL surface works from C++ — the lifecycle is extern "C",
+ * and the AMC_LOGGER_* / AMC_JSON macros compile in both languages (the call-site
+ * cache and the hot-path level use C11 _Atomic in C and std::atomic in C++; the two
+ * are layout-pinned by static_asserts below, gcc/clang only).
+ *
  * Contracts (see docs/Design.md):
  *  - call amc_logger_init() once, before spawning threads
  *  - EVENT and the payload format string must be string literals
@@ -16,12 +21,16 @@
  */
 
 #ifdef __cplusplus
-#error "AmcLogger.h is C-only in v1 (uses C11 _Atomic in its macros)"
-#endif
-
+#include <atomic>        /* C++ side of the hot-path atomics (layout-pinned below) */
+#else
 #include <stdatomic.h>
+#endif
 #include <stddef.h>   /* NULL — amc_logger_init(NULL) is the canonical first call */
 #include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* ---- Severity levels (ascending) ---- */
 #define AMC_LOGGER_LEVEL_DEBUG    0
@@ -60,13 +69,49 @@ struct amc_logger_stats {
 };
 void amc_logger_get_stats(struct amc_logger_stats *out); /* callable at any time */
 
+#ifdef __cplusplus
+}  /* extern "C" */
+#endif
+
 /* ---- Macro plumbing (do not use directly) ---- */
 
 /* Public hot-path prefix of a logger. `level` is the only field the macros read;
- * the implementation extends this struct internally. Treat as read-only. */
+ * the implementation extends this struct internally. Treat as read-only.
+ * The member is C11 _Atomic in C and std::atomic in C++ — the implementation is
+ * compiled as C and both views must agree on layout (pinned below). */
 struct amc_logger {
+#ifdef __cplusplus
+    std::atomic<int> level;
+#else
     _Atomic int level;
+#endif
 };
+
+#ifdef __cplusplus
+static_assert(sizeof(std::atomic<int>) == sizeof(int),
+              "std::atomic<int> must be layout-compatible with C11 _Atomic int");
+static_assert(std::atomic<int>::is_always_lock_free,
+              "the hot-path level read must be lock-free to match the C side");
+static_assert(std::atomic<struct amc_logger *>::is_always_lock_free,
+              "the call-site logger cache must be lock-free to match the C side");
+#endif
+
+/* Per-language atomic adapters — used ONLY by AMC_LOGGER_LOG_IMPL_ below. */
+#ifdef __cplusplus
+#define AMC_SITE_CACHE_DECL_  static std::atomic<struct amc_logger *> amc_site_logger_
+#define AMC_SITE_LOAD_()      amc_site_logger_.load(std::memory_order_acquire)
+#define AMC_SITE_STORE_(v_)   amc_site_logger_.store((v_), std::memory_order_release)
+#define AMC_LEVEL_LOAD_(lg_)  (lg_)->level.load(std::memory_order_relaxed)
+#else
+#define AMC_SITE_CACHE_DECL_  static struct amc_logger *_Atomic amc_site_logger_
+#define AMC_SITE_LOAD_()      atomic_load_explicit(&amc_site_logger_, memory_order_acquire)
+#define AMC_SITE_STORE_(v_)   atomic_store_explicit(&amc_site_logger_, (v_), memory_order_release)
+#define AMC_LEVEL_LOAD_(lg_)  atomic_load_explicit(&(lg_)->level, memory_order_relaxed)
+#endif
+
+#ifdef __cplusplus
+extern "C" {   /* the macro-plumbing runtime functions need C linkage in C++ too */
+#endif
 
 /* Derives the module name from `file` and returns the (auto-created) logger.
  * Returns NULL before init / after shutdown; the first pre-init call prints a
@@ -89,6 +134,10 @@ void amc_logger_log(struct amc_logger *logger, int level,
  * after escaping end with "..." and count into stats.truncated. */
 const char *amc_logger_json_escape(const char *s);
 
+#ifdef __cplusplus
+}  /* extern "C" */
+#endif
+
 /* The `"\1" __VA_ARGS__` concatenation makes a non-literal format string a
  * compile error and lets a missing payload become the 1-byte sentinel string
  * (rendered as {}). The implementation skips the sentinel byte; it exists so
@@ -97,18 +146,15 @@ const char *amc_logger_json_escape(const char *s);
  * sentinel can never absorb characters from the payload string. */
 #define AMC_LOGGER_LOG_IMPL_(level_, event_, has_id_, id_, ...)               \
     do {                                                                      \
-        static struct amc_logger *_Atomic amc_site_logger_;                   \
-        struct amc_logger *amc_lg_ = atomic_load_explicit(                    \
-            &amc_site_logger_, memory_order_acquire);                         \
+        AMC_SITE_CACHE_DECL_;                                                 \
+        struct amc_logger *amc_lg_ = AMC_SITE_LOAD_();                        \
         if (amc_lg_ == (struct amc_logger *)0) {                              \
             amc_lg_ = amc_logger_resolve(__FILE__);                           \
             if (amc_lg_ != (struct amc_logger *)0)                            \
-                atomic_store_explicit(&amc_site_logger_, amc_lg_,             \
-                                      memory_order_release);                  \
+                AMC_SITE_STORE_(amc_lg_);                                     \
         }                                                                     \
         if (amc_lg_ != (struct amc_logger *)0 &&                              \
-            (level_) >= atomic_load_explicit(&amc_lg_->level,                 \
-                                             memory_order_relaxed))           \
+            (level_) >= AMC_LEVEL_LOAD_(amc_lg_))                             \
             amc_logger_log(amc_lg_, (level_), __func__, (event_),             \
                            (has_id_), (id_), "\1" __VA_ARGS__);               \
     } while (0)

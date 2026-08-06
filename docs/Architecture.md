@@ -693,3 +693,25 @@ confined to that target). Measured results and the tail investigation: §14.13.
   warning, write-error reporting.
 - **M5 — proof**: benchmarks vs targets (and optional spdlog run), macOS CI leg,
   examples/config polish, README.
+
+### 14.16 C++-includable lifecycle surface (v2, 2026-08-06)
+
+`AmcLogger.h` no longer `#error`s under `__cplusplus`: the lifecycle surface
+(`amc_logger_init/shutdown/flush`, stats, `amc_logger_json_escape`, the level defines)
+is wrapped in `extern "C"` and usable from C++ hosts that own the logger lifecycle
+while C libraries emit the lines (the AntiMatterFusion→AMM integration). The hot-path
+`struct amc_logger` and the `AMC_LOGGER_*` / `AMC_JSON` macros keep their C11
+`_Atomic` implementation and remain gated behind `#ifndef __cplusplus` — logging call
+sites must still be C translation units. Design.md's "public header is C-only" v1
+statement is superseded for the lifecycle surface only.
+
+### 14.17 C++-capable log macros (v3, 2026-08-06)
+
+Extends §14.16: the `AMC_LOGGER_*` / `AMC_JSON` macros now compile in C++ too. The
+call-site cache and the hot-path `struct amc_logger.level` use per-language atomics
+(`_Atomic` in C, `std::atomic` in C++) behind the `AMC_SITE_*_` / `AMC_LEVEL_LOAD_`
+adapter macros; layout compatibility is pinned by C++ static_asserts (gcc/clang).
+The macro-plumbing runtime functions (`amc_logger_resolve/log/json_escape`) carry C
+linkage in both languages. First C++ consumer: AntiMatterFusion's shared risk-rules
+header inlined into AMM's AlgoModel.cpp. Chapter tests unchanged and green (10/10);
+C++ compile+runtime smoke exercised at integration time.
