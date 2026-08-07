@@ -12,7 +12,9 @@
  *
  *  - Logging BEFORE init: messages are dropped, and the very first such call
  *    prints a single warning to stderr (once per process, never repeated).
- *  - init twice: the second call fails with a diagnostic; the first stays.
+ *  - init twice: the second call is a silent no-op returning 1; the first
+ *    config stays in force (the second call's config_path is never read).
+ *  - init after shutdown: fails with a diagnostic (there is no restart).
  *  - shutdown twice: idempotent, both return 0.
  *  - Logging AFTER shutdown: a safe no-op. No crash, no output.
  *  - amc_logger_flush() outside the init..shutdown window: returns -1.
@@ -50,16 +52,19 @@ static void test_LoggingBeforeInit_DropsWithOneWarning(void)
     free(out);
 }
 
-static void test_SecondInitFails_FirstStaysFunctional(void)
+static void test_SecondInitIsANoOp_FirstConfigStaysInForce(void)
 {
     capture_stdout();
     TEST_ASSERT_EQUAL_INT(0, amc_logger_init(NULL));
 
+    /* the second init returns 1, prints nothing, and never reads its
+     * config_path — a nonexistent file proves the no-op short-circuits
+     * before any file I/O or parsing */
     capture_stderr();
-    TEST_ASSERT_EQUAL_INT(-1, amc_logger_init(NULL));
+    TEST_ASSERT_EQUAL_INT(1, amc_logger_init(NULL));
+    TEST_ASSERT_EQUAL_INT(1, amc_logger_init("no/such/config.yaml"));
     char *err = release_stderr();
-    TEST_ASSERT_EQUAL_INT(1,
-        amc_count_lines_containing(err, "already initialized"));
+    TEST_ASSERT_EQUAL_INT(0, amc_count_lines(err));
     free(err);
 
     AMC_LOGGER_INFO("StillWorking");
@@ -67,6 +72,21 @@ static void test_SecondInitFails_FirstStaysFunctional(void)
     char *out = release_stdout();
     TEST_ASSERT_EQUAL_INT(1, amc_count_lines_containing(out, "StillWorking"));
     free(out);
+}
+
+static void test_InitAfterShutdownFails(void)
+{
+    capture_stdout();
+    TEST_ASSERT_EQUAL_INT(0, amc_logger_init(NULL));
+    amc_logger_shutdown();
+    free(release_stdout());
+
+    capture_stderr();
+    TEST_ASSERT_EQUAL_INT(-1, amc_logger_init(NULL));
+    char *err = release_stderr();
+    TEST_ASSERT_EQUAL_INT(1,
+        amc_count_lines_containing(err, "already shut down"));
+    free(err);
 }
 
 static void test_ShutdownIsIdempotent(void)
@@ -123,7 +143,8 @@ int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_LoggingBeforeInit_DropsWithOneWarning);
-    RUN_TEST(test_SecondInitFails_FirstStaysFunctional);
+    RUN_TEST(test_SecondInitIsANoOp_FirstConfigStaysInForce);
+    RUN_TEST(test_InitAfterShutdownFails);
     RUN_TEST(test_ShutdownIsIdempotent);
     RUN_TEST(test_LoggingAfterShutdownIsANoOp);
     RUN_TEST(test_FlushOnlyWorksBetweenInitAndShutdown);

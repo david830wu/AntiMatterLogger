@@ -254,10 +254,14 @@ int amc_logger_init(const char *config_path)
 {
     char err[512];
 
-    int st = atomic_load_explicit(&g_amc.state, memory_order_relaxed);
+    /* Acquire so a caller that gets 1 also observes the completed init it is
+     * deferring to. The check runs before the config file is even read: a
+     * second init is a no-op and its config_path is ignored entirely. */
+    int st = atomic_load_explicit(&g_amc.state, memory_order_acquire);
+    if (st == AMC_READY)
+        return 1;
     if (st != AMC_UNINIT) {
-        fprintf(stderr, "amc_logger: init failed: already %s\n",
-                st == AMC_READY ? "initialized" : "shut down");
+        fprintf(stderr, "amc_logger: init failed: already shut down\n");
         return -1;
     }
 

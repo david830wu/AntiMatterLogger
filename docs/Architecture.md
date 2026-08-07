@@ -715,3 +715,20 @@ The macro-plumbing runtime functions (`amc_logger_resolve/log/json_escape`) carr
 linkage in both languages. First C++ consumer: AntiMatterFusion's shared risk-rules
 header inlined into AMM's AlgoModel.cpp. Chapter tests unchanged and green (10/10);
 C++ compile+runtime smoke exercised at integration time.
+
+### 14.18 Idempotent re-init: `amc_logger_init` returns 1 when already READY (2026-08-07)
+
+Motivated by set-once orchestrators (AntiMatterFusion's `amfu_global_init` and AMM's
+`amm_algo_model_global_init`) that may legitimately run more than once per process:
+a second `amc_logger_init` while READY is now a **silent no-op returning 1** — the
+first configuration stays in force and the second call's `config_path` is never
+read (the check short-circuits before any file I/O). Init after shutdown still
+fails with `-1` + diagnostic (there is no restart). Callers distinguish success
+from failure with `< 0`. The
+already-READY check is an acquire load pairing with the READY release store, so a
+caller that receives 1 also observes the completed init it defers to. Thread
+safety of the FIRST init is deliberately NOT provided — contract line 1 ("init
+before you spawn threads") stands; concurrent first inits race on `g_amc.cfg`,
+sinks, and the worker, and callers that cannot honor the contract must serialize
+init themselves. Chapter 06 tests updated (no-op second init incl. unread bad
+path; init-after-shutdown diagnostic).

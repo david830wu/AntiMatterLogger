@@ -9,7 +9,7 @@
 
 int main()
 {
-    if (amc_logger_init(nullptr) != 0)
+    if (amc_logger_init(nullptr) < 0)
         return 1;
     AMC_LOGGER_INFO("PackageSmokeCpp", AMC_JSON(AMC_KV_STR("via", "find_package"),
                                                 AMC_KV_STR("lang", "c++"),
