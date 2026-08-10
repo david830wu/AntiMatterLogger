@@ -7,7 +7,7 @@
 
 int main(void)
 {
-    if (amc_logger_init(NULL) != 0)
+    if (amc_logger_init(NULL) < 0)
         return 1;
     AMC_LOGGER_INFO("PackageSmoke", AMC_JSON(AMC_KV_STR("via", "find_package"),
                                              AMC_KV_STR_ESC("esc", "with \"quotes\""),

@@ -48,9 +48,17 @@ extern "C" {
 
 /* ---- Lifecycle ---- */
 int amc_logger_init(const char *config_path); /* NULL = built-in defaults (empty config).
-                                                 0 ok; -1 + stderr diagnostic on error.
-                                                 A failed init leaves the library
-                                                 uninitialized and may be retried.     */
+                                                 0  brought the logger up;
+                                                 1  it was ALREADY initialized — benign
+                                                    repeat, the FIRST config stays in
+                                                    effect (test < 0 for failure, or
+                                                    == 0 for "I am the one who inited");
+                                                -1  error (incl. init after shutdown),
+                                                    with an stderr diagnostic. A failed
+                                                    init leaves the library uninitialized
+                                                    and may be retried.
+                                                 NOT thread-safe: concurrent FIRST calls
+                                                 race — init once, before threads.      */
 int amc_logger_shutdown(void);                /* drain, join, flush, close; idempotent */
 int amc_logger_flush(void);                   /* block until everything accepted before
                                                  the call is written and fflushed;

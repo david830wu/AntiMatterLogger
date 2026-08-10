@@ -15,7 +15,7 @@
 
 int main(void)
 {
-    if (amc_logger_init("config/logger.yaml") != 0) {
+    if (amc_logger_init("config/logger.yaml") < 0) {
         fprintf(stderr, "logger init failed; fix the config and retry\n");
         return 1;
     }

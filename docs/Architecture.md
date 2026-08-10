@@ -89,7 +89,9 @@ Estimated size: ~1,700 LOC library, well within "small and simple".
 
 /* ---- Lifecycle ---- */
 int amc_logger_init(const char *config_path);  /* NULL = built-in defaults (empty config).
-                                                  0 ok; -1 + stderr diagnostic on error.
+                                                  0 brought it up; 1 already initialized
+                                                  (benign repeat, first config stays);
+                                                  -1 + stderr diagnostic on error.
                                                   A failed init leaves the library
                                                   uninitialized and may be retried. */
 int amc_logger_shutdown(void);                 /* drain, join, flush, close; idempotent. */
@@ -403,7 +405,10 @@ function just fflushes both sinks under their mutexes. Returns −1 unless state
 
 ### 6.6 `amc_logger_init` (single-threaded by contract)
 
-1. `state != UNINIT` → stderr diagnostic, return −1 (failed init stays UNINIT, retryable).
+1. `state == READY` → **stdout** notice, return **1** (benign repeat: the postcondition
+   holds, the FIRST config stays in effect, nothing is reconfigured — §14.18).
+   `state == SHUTDOWN` → stderr diagnostic, return −1 (the library stays down).
+   A failed init stays UNINIT and is retryable.
 2. `config_path == NULL` → `amc_internal_config_defaults()`; else read file (size-capped),
    `amc_internal_config_parse()` → on error print `amc_logger: config: <file>:<line>: <msg>`,
    return −1.
@@ -715,3 +720,23 @@ The macro-plumbing runtime functions (`amc_logger_resolve/log/json_escape`) carr
 linkage in both languages. First C++ consumer: AntiMatterFusion's shared risk-rules
 header inlined into AMM's AlgoModel.cpp. Chapter tests unchanged and green (10/10);
 C++ compile+runtime smoke exercised at integration time.
+
+### 14.18 `amc_logger_init` returns 1 on a repeat init (2026-08-10)
+
+`amc_logger_init` used to return −1 for ANY non-UNINIT state, conflating two different
+situations. Re-initializing after `shutdown` really is an error — shutdown frees no logger
+or queue memory precisely so post-shutdown calls stay safe, and the library is meant to
+stay down — but calling init a second time while READY leaves the caller's postcondition
+("the logger is initialized when this returns") perfectly satisfied. Reporting that as a
+failure forced every embedding library to either track init itself or treat a benign
+repeat as fatal.
+
+The state check now splits: READY → **1**, SHUTDOWN → −1, UNINIT → proceed. The repeat
+still prints a notice — a second init with a DIFFERENT config silently keeps the first one
+and that is worth seeing — but on **stdout**, not stderr: nothing failed, so it must not
+land in a caller's error stream. Nothing else changed — no reconfiguration, no
+memory-order changes, no new state. Callers that only need the logger running test
+`< 0`; callers that must know whether THEY brought it up test `== 0`.
+
+Init remains **single-threaded by contract** (§6.6): this is not a thread-safety fix, and
+concurrent FIRST calls still race.

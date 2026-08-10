@@ -218,7 +218,9 @@ loggers:                       # module name → level override (flat form)
 
 ### 7.2 Validation — fail fast (00, Q16)
 
-`amc_logger_init()` returns `-1` and prints a precise diagnostic to stderr on: unreadable
+`amc_logger_init()` returns `0` when it brought the logger up and `1` when it was already
+initialized (a benign repeat: the first config stays in effect, so callers that only need
+the logger running test for `< 0`). It returns `-1` and prints a precise diagnostic to stderr on: unreadable
 file, any syntax outside the YAML subset, **any unknown key**, unknown level/policy names,
 out-of-range numbers, unknown `$VAR` in a path, or unopenable sink. Level strings are
 case-insensitive; canonical form is uppercase.
