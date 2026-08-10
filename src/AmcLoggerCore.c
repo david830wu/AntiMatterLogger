@@ -255,9 +255,20 @@ int amc_logger_init(const char *config_path)
     char err[512];
 
     int st = atomic_load_explicit(&g_amc.state, memory_order_relaxed);
+    if (st == AMC_READY) {
+        /* Already up. The caller's postcondition — "the logger is initialized when this
+         * returns" — HOLDS, so a repeat init is not a failure: report it as the benign repeat
+         * (1) and leave the FIRST config in effect. Callers that must distinguish "I brought it
+         * up" from "someone already had" test for 0 vs 1; callers that only need it running
+         * test for < 0. The notice goes to STDOUT, not stderr: nothing failed. It is still
+         * worth printing, because a second init with a DIFFERENT config silently keeps the
+         * first one. */
+        printf("amc_logger: init ignored: already initialized "
+               "(the first config stays in effect)\n");
+        return 1;
+    }
     if (st != AMC_UNINIT) {
-        fprintf(stderr, "amc_logger: init failed: already %s\n",
-                st == AMC_READY ? "initialized" : "shut down");
+        fprintf(stderr, "amc_logger: init failed: already shut down\n");
         return -1;
     }
 

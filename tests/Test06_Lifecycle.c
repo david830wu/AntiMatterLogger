@@ -12,7 +12,9 @@
  *
  *  - Logging BEFORE init: messages are dropped, and the very first such call
  *    prints a single warning to stderr (once per process, never repeated).
- *  - init twice: the second call fails with a diagnostic; the first stays.
+ *  - init twice: the second call is a BENIGN REPEAT — returns 1, notes it on STDOUT
+ *    (nothing failed), and the first config stays in effect. Init AFTER shutdown is
+ *    still an error (-1 on stderr).
  *  - shutdown twice: idempotent, both return 0.
  *  - Logging AFTER shutdown: a safe no-op. No crash, no output.
  *  - amc_logger_flush() outside the init..shutdown window: returns -1.
@@ -50,23 +52,43 @@ static void test_LoggingBeforeInit_DropsWithOneWarning(void)
     free(out);
 }
 
-static void test_SecondInitFails_FirstStaysFunctional(void)
+/* The OTHER non-UNINIT state is genuinely an error: once shut down, the library stays down
+ * (shutdown deliberately frees no logger/queue memory, so re-initializing is not supported). */
+static void test_InitAfterShutdownFails(void)
 {
     capture_stdout();
     TEST_ASSERT_EQUAL_INT(0, amc_logger_init(NULL));
+    amc_logger_shutdown();
+    free(release_stdout());
 
     capture_stderr();
     TEST_ASSERT_EQUAL_INT(-1, amc_logger_init(NULL));
     char *err = release_stderr();
-    TEST_ASSERT_EQUAL_INT(1,
-        amc_count_lines_containing(err, "already initialized"));
+    TEST_ASSERT_EQUAL_INT(1, amc_count_lines_containing(err, "already shut down"));
     free(err);
+}
+
+static void test_SecondInitIsBenignRepeat_FirstStaysFunctional(void)
+{
+    capture_stderr();
+    capture_stdout();
+    /* 0 = this call brought the logger up. */
+    TEST_ASSERT_EQUAL_INT(0, amc_logger_init(NULL));
+    /* 1 = already initialized. Not an error: the postcondition holds, and the FIRST config
+     * stays in effect — so a library that only needs the logger running can test for < 0. */
+    TEST_ASSERT_EQUAL_INT(1, amc_logger_init(NULL));
 
     AMC_LOGGER_INFO("StillWorking");
     amc_logger_shutdown();
+
     char *out = release_stdout();
+    char *err = release_stderr();
+    /* the notice goes to STDOUT — nothing failed, so stderr stays clean */
+    TEST_ASSERT_EQUAL_INT(1, amc_count_lines_containing(out, "already initialized"));
+    TEST_ASSERT_EQUAL_INT(0, amc_count_lines(err));
     TEST_ASSERT_EQUAL_INT(1, amc_count_lines_containing(out, "StillWorking"));
     free(out);
+    free(err);
 }
 
 static void test_ShutdownIsIdempotent(void)
@@ -123,7 +145,8 @@ int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_LoggingBeforeInit_DropsWithOneWarning);
-    RUN_TEST(test_SecondInitFails_FirstStaysFunctional);
+    RUN_TEST(test_SecondInitIsBenignRepeat_FirstStaysFunctional);
+    RUN_TEST(test_InitAfterShutdownFails);
     RUN_TEST(test_ShutdownIsIdempotent);
     RUN_TEST(test_LoggingAfterShutdownIsANoOp);
     RUN_TEST(test_FlushOnlyWorksBetweenInitAndShutdown);
