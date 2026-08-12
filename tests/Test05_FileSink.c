@@ -64,7 +64,7 @@ static void test_PathVariablesAndAutoMkdir(void)
     struct tm tm;
     gmtime_r(&shifted, &tm);
     char expected[256];
-    snprintf(expected, sizeof(expected), "./deep/%04d-%02d-%02d/nested/app.%ld.log",
+    snprintf(expected, sizeof(expected), "./deep/%04d%02d%02d/nested/app.%ld.log",
              tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, (long)getpid());
     unlink(expected);
 

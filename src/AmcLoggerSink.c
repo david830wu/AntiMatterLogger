@@ -42,7 +42,7 @@ int amc_internal_path_expand(const char *tmpl, char *out, size_t outsz,
                 time_t shifted = ts.tv_sec + (time_t)g_amc.cfg.utc_offset_hours * 3600;
                 struct tm tm;
                 gmtime_r(&shifted, &tm);
-                insn = (size_t)snprintf(sub, sizeof(sub), "%04d-%02d-%02d",
+                insn = (size_t)snprintf(sub, sizeof(sub), "%04d%02d%02d",
                                         tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
                 ins = sub;
                 p += 5;
