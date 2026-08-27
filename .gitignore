@@ -57,3 +57,4 @@ dkms.conf
 # Build directories
 build*/
 Testing/
+.local/

@@ -7,6 +7,18 @@ AntiMatterCommon ecosystem (`amc_` / `AMC_LOGGER_` prefix). Inspired by spdlog's
 architecture, stripped to a fixed format and a deliberately tiny core (~1,600 LOC,
 zero dependencies beyond libc and pthreads).
 
+## TL;DR
+
+```bash
+./scripts/build_component.sh
+ctest --test-dir build --output-on-failure
+```
+
+This builds the static library and tests, then installs the header, library, and
+CMake package into `.local/`. Consumers use `find_package(AntiMatterLogger 0.3
+REQUIRED)` and link `AntiMatter::AmcLogger`. The first program below is the
+smallest complete usage example.
+
 ## Features
 
 - **Fixed, parseable line format** with microsecond timestamps:
@@ -101,16 +113,49 @@ Unknown keys, levels, sinks, `$VAR`s, ranges — all are init errors with precis
 diagnostics on stderr. The supported YAML subset is deliberately small; anything
 outside it (sequences, anchors, multiline scalars, tabs) is rejected loudly.
 
-## Building
+## Detailed build and use
 
 Requires CMake ≥ 3.20 and gcc-13 (Linux) or AppleClang ≥ 14 (macOS); POSIX only.
 
+### Repository build
+
+Use the repository-owned component interface for a standalone or composed build:
+
 ```bash
-cmake -S . -B build && cmake --build build -j     # static lib + tests
-ctest --test-dir build --output-on-failure        # run the test suite
+./scripts/build_component.sh
+ctest --test-dir build --output-on-failure
 ```
 
-Consume from CMake either way — the target name is identical:
+Its defaults are `build/` for CMake state, `.local/` for the install, a `Release`
+build, and tests enabled.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `AM_PREFIX` | `.local` | Install prefix |
+| `AM_BUILD_DIR` | `build` | CMake build directory |
+| `AM_BUILD_TESTS` | `ON` | Build the test suite |
+| `AM_CMAKE_PREFIX_PATH` | empty | Additional semicolon-separated CMake package prefixes |
+| `BUILD_TYPE` | `Release` | CMake build type |
+| `NUM_THREADS` | host CPU count | Parallel build jobs |
+| `AM_CLEAN_BUILD` | `false` | Set to `true` to configure with `cmake --fresh` |
+
+For example, a parent stack can select one shared prefix:
+
+```bash
+AM_PREFIX=/path/to/prefix ./scripts/build_component.sh
+```
+
+The equivalent manual developer build, without installing, is:
+
+```bash
+cmake -S . -B build -DAMC_BUILD_TESTS=ON
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+```
+
+### Consume from CMake
+
+The target name is the same for a vendored or installed dependency:
 
 ```cmake
 # vendored:
@@ -120,6 +165,8 @@ find_package(AntiMatterLogger 0.3 REQUIRED)
 
 target_link_libraries(app PRIVATE AntiMatter::AmcLogger)
 ```
+
+Configure an installed consumer with `-DCMAKE_PREFIX_PATH=/path/to/prefix`.
 
 The install tree carries the full CMake package (targets export, config with the
 Threads dependency, `SameMinorVersion` version file) under
