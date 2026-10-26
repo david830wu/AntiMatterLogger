@@ -15,7 +15,7 @@ ctest --test-dir build --output-on-failure
 ```
 
 This builds the static library and tests, then installs the header, library, and
-CMake package into `.local/`. Consumers use `find_package(AntiMatterLogger 0.3
+CMake package into `.local/`. Consumers use `find_package(AntiMatterLogger 0.4
 REQUIRED)` and link `AntiMatter::AmcLogger`. The first program below is the
 smallest complete usage example.
 
@@ -161,7 +161,7 @@ The target name is the same for a vendored or installed dependency:
 # vendored:
 add_subdirectory(AntiMatterLogger)
 # or installed (cmake --install build --prefix <prefix>):
-find_package(AntiMatterLogger 0.3 REQUIRED)
+find_package(AntiMatterLogger 0.4 REQUIRED)
 
 target_link_libraries(app PRIVATE AntiMatter::AmcLogger)
 ```
