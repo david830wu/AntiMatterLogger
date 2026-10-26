@@ -453,7 +453,7 @@ drain target).
 
 ## 8. Sinks — `AmcLoggerSink.c`
 
-- **Path expansion**: scan the template once; `$TODAY` → `YYYY-MM-DD` (at
+- **Path expansion**: scan the template once; `$TODAY` → `YYYYMMDD` (at
   `utc_offset_hours`), `$PID` → `getpid()`. Any other `$NAME` → init error (fail fast).
   Expansion happens exactly once, at open (Q14).
 - **`mkdir -p`**: create each `/`-separated prefix with mode `0777` (umask applies);

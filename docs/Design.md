@@ -18,6 +18,13 @@ and a floating logging thread pollutes trading cores. Linux only: on macOS the
 library warns on stderr and runs unpinned; in sync mode the key is silently ignored
 (no worker exists). An impossible core fails init loudly. Library version 0.3.0.
 
+**Amendment 4 (2026-10-26, agreed — v0.4.0)**: version 0.4.0 collects the changes made
+since 0.3.0 — the C++-includable lifecycle and log macros plus a position-independent
+static library for embedding into shared libraries (Architecture §14.16, §14.17),
+`amc_logger_init` returning 1 on a repeat init (§14.18), and `$TODAY` expanding to
+`YYYYMMDD` instead of `YYYY-MM-DD` (§6, §12). This is the last release as a standalone
+repository: development continues in AntiMatterCommon as `components/logger`.
+
 **Next step**: architecture design (module/file layout, public header, core data structures).
 
 Decision references like (D3) or (Q14) point to the numbered items in `Answer1.md`;
@@ -181,7 +188,7 @@ remain safe.
 
 - **`stdout`** — writes to standard output. No colors in v1.
 - **`basic_file`** — appends to one file. Path variables, expanded **once at open** (Q14):
-  `$TODAY` (`YYYY-MM-DD` at `utc_offset_hours`) and `$PID`. Unknown `$VAR` fails init (00).
+  `$TODAY` (`YYYYMMDD` at `utc_offset_hours`) and `$PID`. Unknown `$VAR` fails init (00).
   Missing directories are created automatically (`mkdir -p` equivalent); creation or open
   failure fails init. No midnight rollover in v1 — long-running processes keep the opened
   path (daemons restart daily).
@@ -355,7 +362,7 @@ Follow-up questions, confirmed 2026-07-22:
   the line ends there.
 
 Editorial defaults, accepted without veto: key named `utc_offset_hours` (integer hours;
-half-hour zones unsupported); `flush_every_ms` default 1000; `$TODAY` = `YYYY-MM-DD`;
+half-hour zones unsupported); `flush_every_ms` default 1000; `$TODAY` = `YYYYMMDD`;
 omitted `sinks:` → stdout only; case-insensitive level strings; auto `mkdir -p`; module =
 basename minus `.c`/`.h`, same-basename files share a logger; trader_id is any `int`
 carried with an internal has-id flag (no sentinel value); write errors → rate-limited
